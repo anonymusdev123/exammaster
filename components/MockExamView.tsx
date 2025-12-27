@@ -57,7 +57,7 @@ const MockExamView: React.FC<MockExamViewProps> = ({ session, onUpdateSession })
             console.error("Errore durante l'estrazione del file:", err); 
         }
     }
-    setPastExamText(prev => prev + newText);
+    setPastExamText((prev: string) => prev + newText);
     setIsExtracting(false);
   };
 
