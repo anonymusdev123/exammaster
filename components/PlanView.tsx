@@ -1,0 +1,286 @@
+
+import React, { useState, useMemo } from 'react';
+import { ExamSession } from '../types';
+import { ICONS } from '../constants';
+
+interface PlanViewProps {
+  sessions: ExamSession[];
+  onUpdateSessions: (updated: ExamSession[]) => void;
+  onMoveModule: (sessionId: string, moduleUid: string, newDate: string) => void;
+}
+
+const SESSION_COLORS = [
+  { bg: 'bg-blue-600', text: 'text-blue-50', border: 'border-blue-700', light: 'bg-blue-50' },
+  { bg: 'bg-purple-600', text: 'text-purple-50', border: 'border-purple-700', light: 'bg-purple-50' },
+  { bg: 'bg-amber-600', text: 'text-amber-50', border: 'border-amber-700', light: 'bg-amber-50' },
+  { bg: 'bg-rose-600', text: 'text-rose-50', border: 'border-rose-700', light: 'bg-rose-50' },
+  { bg: 'bg-indigo-600', text: 'text-indigo-50', border: 'border-indigo-700', light: 'bg-indigo-50' },
+  { bg: 'bg-orange-600', text: 'text-orange-50', border: 'border-orange-700', light: 'bg-orange-50' },
+];
+
+const PlanView: React.FC<PlanViewProps> = ({ sessions, onUpdateSessions, onMoveModule }) => {
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [selectedDayInfo, setSelectedDayInfo] = useState<{ date: string, tasks: any[], exams: any[] } | null>(null);
+
+  const getLocalDateStr = (d: Date) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const todayStr = getLocalDateStr(new Date());
+
+  const eventsByDate = useMemo(() => {
+    const map: Record<string, { tasks: any[], exams: any[], dayOffs: string[] }> = {};
+    
+    sessions.forEach(session => {
+      const color = SESSION_COLORS[session.colorIndex || 0];
+      const examDateStr = session.examDate;
+
+      if (!map[examDateStr]) map[examDateStr] = { tasks: [], exams: [], dayOffs: [] };
+      map[examDateStr].exams.push({ course: session.course, color });
+
+      if (session.isPassed) return;
+
+      session.dayOffs?.forEach(dStr => {
+        if (!map[dStr]) map[dStr] = { tasks: [], exams: [], dayOffs: [] };
+        if (!map[dStr].dayOffs.includes(session.course)) {
+          map[dStr].dayOffs.push(session.course);
+        }
+      });
+
+      session.data.studyPlan.forEach((dayPlan) => {
+        const dateStr = dayPlan.assignedDate;
+        if (!dateStr) return;
+        
+        if (!map[dateStr]) map[dateStr] = { tasks: [], exams: [], dayOffs: [] };
+        const isCompleted = dayPlan.completedTasks?.every(t => t) && (dayPlan.completedTasks?.length || 0) > 0;
+        
+        map[dateStr].tasks.push({ 
+          sessionId: session.id, 
+          course: session.course, 
+          color, 
+          plan: dayPlan, 
+          isCompleted,
+          uniqueKey: dayPlan.uid
+        });
+      });
+    });
+    return map;
+  }, [sessions]);
+
+  const calendarDays = useMemo(() => {
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth();
+    const firstDay = new Date(year, month, 1);
+    let startDay = firstDay.getDay(); 
+    startDay = startDay === 0 ? 6 : startDay - 1;
+
+    const days = [];
+    const prevMonthLastDay = new Date(year, month, 0).getDate();
+    for (let i = startDay; i > 0; i--) {
+      days.push({ date: new Date(year, month - 1, prevMonthLastDay - i + 1), isCurrentMonth: false });
+    }
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    for (let i = 1; i <= daysInMonth; i++) {
+      days.push({ date: new Date(year, month, i), isCurrentMonth: true });
+    }
+    while (days.length < 42) {
+      days.push({ date: new Date(year, month + 1, days.length - daysInMonth - startDay + 1), isCurrentMonth: false });
+    }
+    return days;
+  }, [currentDate]);
+
+  const handleGlobalDayOffToggle = (date: string) => {
+    const isCurrentlyDayOff = sessions.some(s => s.dayOffs?.includes(date));
+    const updated = sessions.map(s => {
+      if (s.isPassed) return s;
+      const dayOffs = s.dayOffs || [];
+      return {
+        ...s,
+        dayOffs: isCurrentlyDayOff ? dayOffs.filter(d => d !== date) : Array.from(new Set([...dayOffs, date]))
+      };
+    });
+    onUpdateSessions(updated);
+  };
+
+  const isSelectedDayOff = selectedDayInfo ? sessions.some(s => s.dayOffs?.includes(selectedDayInfo.date)) : false;
+
+  const onDragStart = (e: React.DragEvent, sessionId: string, moduleUid: string) => {
+    const data = JSON.stringify({ sessionId, moduleUid });
+    e.dataTransfer.setData('application/json', data);
+    e.dataTransfer.effectAllowed = 'move';
+    const target = e.currentTarget as HTMLElement;
+    target.style.opacity = '0.4';
+  };
+
+  const onDragEnd = (e: React.DragEvent) => {
+    const target = e.currentTarget as HTMLElement;
+    target.style.opacity = '1';
+  };
+
+  const onDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const onDrop = (e: React.DragEvent, date: string) => {
+    e.preventDefault();
+    const rawData = e.dataTransfer.getData('application/json');
+    if (!rawData) return;
+    try {
+      const { sessionId, moduleUid } = JSON.parse(rawData);
+      onMoveModule(sessionId, moduleUid, date);
+    } catch (err) {
+      console.error("Drop Parse Error", err);
+    }
+  };
+
+  return (
+    <div className="space-y-8 animate-fadeIn">
+      <div className="flex justify-between items-center bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100">
+        <button onClick={() => setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth() - 1)))} className="p-3 border rounded-xl hover:bg-slate-50 transition-all text-slate-400"><ICONS.ArrowRight className="w-5 h-5 rotate-180" /></button>
+        <h2 className="text-xl font-black text-slate-900 capitalize tracking-tight">{currentDate.toLocaleDateString('it-IT', { month: 'long', year: 'numeric' })}</h2>
+        <button onClick={() => setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth() + 1)))} className="p-3 border rounded-xl hover:bg-slate-50 transition-all text-slate-400"><ICONS.ArrowRight className="w-5 h-5" /></button>
+      </div>
+
+      <div className="bg-white rounded-[3rem] shadow-2xl border border-slate-100 overflow-hidden">
+        <div className="grid grid-cols-7 bg-slate-50/50 border-b border-slate-100">
+          {['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'].map(d => (
+            <div key={d} className="py-4 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest">{d}</div>
+          ))}
+        </div>
+        
+        <div className="grid grid-cols-7 grid-rows-6 h-[650px] md:h-[900px]">
+          {calendarDays.map((day, idx) => {
+            const dateStr = getLocalDateStr(day.date);
+            const isToday = dateStr === todayStr;
+            const data = eventsByDate[dateStr] || { tasks: [], exams: [], dayOffs: [] };
+            const isExamDay = data.exams.length > 0;
+            const isDayOff = data.dayOffs.length > 0;
+            
+            return (
+              <div 
+                key={idx}
+                onClick={() => day.isCurrentMonth && setSelectedDayInfo({ date: dateStr, tasks: data.tasks, exams: data.exams })}
+                onDragOver={onDragOver}
+                onDrop={(e) => onDrop(e, dateStr)}
+                className={`border-r border-b border-slate-100 p-1 flex flex-col gap-1 transition-all relative group/cell ${day.isCurrentMonth ? 'bg-white' : 'bg-slate-50/30'} ${isExamDay ? 'bg-emerald-50/30' : ''} ${isDayOff ? 'bg-red-50/40' : ''} ${day.isCurrentMonth ? 'hover:bg-blue-50/50 cursor-pointer' : ''}`}
+              >
+                <div className={`text-[10px] font-black w-6 h-6 flex items-center justify-center rounded-lg ${isExamDay ? 'bg-emerald-600 text-white shadow-lg animate-pulse' : isToday ? 'bg-blue-600 text-white shadow-md' : isDayOff ? 'bg-red-500 text-white' : 'text-slate-400'}`}>
+                  {day.date.getDate()}
+                </div>
+                
+                <div className="flex-1 overflow-y-auto space-y-0.5 scrollbar-hide">
+                  {isExamDay && data.exams.map((ex, i) => (
+                    <div key={i} className="bg-emerald-600 text-white text-[8px] font-black px-1.5 py-1 rounded truncate uppercase shadow-sm border border-emerald-700">ESAME: {ex.course}</div>
+                  ))}
+                  {isDayOff && (
+                    <div className="bg-red-100 text-red-600 text-[8px] font-black px-1.5 py-1 rounded truncate uppercase flex items-center gap-1">
+                       RIPOSO
+                    </div>
+                  )}
+                  {!isDayOff && data.tasks.map((task) => {
+                    const isSim = task.plan.topics[0] === "SIMULAZIONE";
+                    return (
+                      <div 
+                        key={task.uniqueKey} 
+                        draggable={!task.isCompleted}
+                        onDragStart={(e) => onDragStart(e, task.sessionId, task.plan.uid)}
+                        onDragEnd={onDragEnd}
+                        className={`${task.color.bg} ${task.color.text} text-[8px] font-bold px-1.5 py-0.5 rounded truncate uppercase shadow-sm transition-all hover:scale-105 active:scale-95 cursor-move ${task.isCompleted ? 'opacity-30 line-through' : ''} ${isSim ? "ring-2 ring-white ring-offset-1 ring-offset-emerald-500" : ""} ${task.plan.isManuallyPlaced ? "border-l-4 border-white" : ""}`}
+                      >
+                        {isSim ? `🔥 SIM: ${task.course}` : task.course}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {selectedDayInfo && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xl z-[60] p-6 flex items-center justify-center animate-fadeIn" onClick={() => setSelectedDayInfo(null)}>
+            <div className="bg-white w-full max-w-2xl rounded-[3rem] shadow-2xl p-10 relative overflow-hidden flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
+              <div className="absolute top-8 right-24">
+                <button 
+                  onClick={() => handleGlobalDayOffToggle(selectedDayInfo.date)}
+                  className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all shadow-lg ${isSelectedDayOff ? 'bg-red-600 text-white shadow-red-500/40 animate-pulse' : 'bg-white border-2 border-red-500 text-red-500 hover:bg-red-100'}`}
+                >
+                  {isSelectedDayOff ? 'DAY OFF ATTIVO' : 'DAY OFF'}
+                </button>
+              </div>
+
+              <button onClick={() => setSelectedDayInfo(null)} className="absolute top-8 right-8 p-3 bg-slate-100 text-slate-500 rounded-2xl hover:bg-slate-200 transition-all"><ICONS.XMark className="w-5 h-5" /></button>
+              
+              <div className="mb-8">
+                <h3 className="text-3xl font-black capitalize tracking-tight text-slate-900">{new Date(selectedDayInfo.date).toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' })}</h3>
+              </div>
+              
+              <div className="flex-1 overflow-y-auto space-y-6 pr-2 custom-scrollbar">
+                {isSelectedDayOff ? (
+                  <div className="flex-1 flex flex-col items-center justify-center py-20 bg-red-50 rounded-[3rem] border-2 border-dashed border-red-200 text-center space-y-4">
+                    <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center text-red-500">
+                       <svg xmlns="http://www.w3.org/2000/svg" className="w-10 h-10" viewBox="0 0 20 20" fill="currentColor"><path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z" /></svg>
+                    </div>
+                    <h4 className="text-xl font-black text-red-700 uppercase tracking-tighter">Oggi ricarichiamo le pile! 🌙</h4>
+                    <p className="text-sm font-medium text-red-500 max-w-xs">Tutto lo studio è stato spalmato sui prossimi giorni disponibili utilizzando la formula di priorità float.</p>
+                  </div>
+                ) : (
+                  <>
+                    {selectedDayInfo.exams.length > 0 && (
+                      <div className="bg-emerald-600 p-8 rounded-[2.5rem] text-white shadow-xl relative overflow-hidden mb-6">
+                        <h4 className="text-[10px] font-black uppercase tracking-widest mb-4 opacity-80">FOCUS: GIORNO D'ESAME</h4>
+                        <div className="space-y-2">
+                          {selectedDayInfo.exams.map((ex, i) => (
+                            <p key={i} className="text-3xl font-black uppercase tracking-tighter">ESAME: {ex.course}</p>
+                          ))}
+                        </div>
+                        <p className="mt-4 text-[11px] font-bold opacity-70 italic">Nessuna sessione di studio aggiuntiva programmata per oggi.</p>
+                      </div>
+                    )}
+                    
+                    <div className="space-y-4">
+                      {selectedDayInfo.tasks.length > 0 ? (
+                        selectedDayInfo.tasks.map((t) => {
+                          const isSim = t.plan.topics[0] === "SIMULAZIONE";
+                          return (
+                            <div key={t.uniqueKey} className={`${t.color.light} p-8 rounded-[2.5rem] border-2 ${t.color.border.replace('bg-', 'border-').replace('600', '200')} shadow-sm`}>
+                              <div className="flex items-center justify-between mb-6">
+                                <span className={`${t.color.bg} ${t.color.text} px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest shadow-md`}>
+                                  {isSim ? `🔥 SIMULAZIONE: ${t.course}` : t.course}
+                                  {t.plan.isManuallyPlaced && " (Bloccato)"}
+                                </span>
+                                <span className="text-[10px] font-black text-slate-400 uppercase">Modulo {t.plan.day > 50000 ? 'Extra' : t.plan.day}</span>
+                              </div>
+                              <ul className="space-y-3">
+                                {t.plan.tasks.map((tk: string, j: number) => (
+                                  <li key={j} className="flex items-start gap-4 p-4 bg-white rounded-2xl text-sm font-bold border border-slate-100 shadow-sm text-slate-700">
+                                    <div className={`w-5 h-5 rounded-lg border-2 ${t.plan.completedTasks?.[j] ? 'bg-emerald-500 border-emerald-500' : 'border-slate-200'} shrink-0 mt-0.5`}></div>
+                                    {tk}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          );
+                        })
+                      ) : !selectedDayInfo.exams.length && (
+                        <div className="text-center py-20 bg-slate-50 rounded-[3rem] border border-dashed border-slate-200">
+                          <p className="text-slate-400 font-black text-[10px] uppercase tracking-widest">Nessun impegno pianificato</p>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default PlanView;

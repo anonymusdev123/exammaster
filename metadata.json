@@ -1,0 +1,7 @@
+{
+  "name": "ExamMaster AI - Personal Knowledge Manager",
+  "description": "Un compagno di studio avanzato basato su IA che trasforma i materiali in strumenti di active recall, simulazioni d'esame e piani di studio adattivi.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
