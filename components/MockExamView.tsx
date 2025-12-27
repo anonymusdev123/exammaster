@@ -12,13 +12,16 @@ interface MockExamViewProps {
   onUpdateSession: (updatedData: any) => void;
 }
 
+type MockExplanationsState = Record<number, { text: string, loading: boolean }>;
+type RevealedSolutionsState = Record<number, boolean>;
+
 const MockExamView: React.FC<MockExamViewProps> = ({ session, onUpdateSession }) => {
   const [loading, setLoading] = useState(false);
   const [pastExamText, setPastExamText] = useState(session.pastExamsContent || '');
   const [isExtracting, setIsExtracting] = useState(false);
   const [showEditor, setShowEditor] = useState(!session.data.mockExam);
-  const [mockExplanations, setMockExplanations] = useState<Record<number, { text: string, loading: boolean }>>({});
-  const [revealedSolutions, setRevealedSolutions] = useState<Record<number, boolean>>({});
+  const [mockExplanations, setMockExplanations] = useState<MockExplanationsState>({});
+  const [revealedSolutions, setRevealedSolutions] = useState<RevealedSolutionsState>({});
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -59,13 +62,13 @@ const MockExamView: React.FC<MockExamViewProps> = ({ session, onUpdateSession })
   };
 
   const handleExplain = async (idx: number, question: string) => {
-    setMockExplanations(prev => ({ ...prev, [idx]: { text: '', loading: true } }));
+    setMockExplanations((prev: MockExplanationsState) => ({ ...prev, [idx]: { text: '', loading: true } }));
     const service = new GeminiService();
     try {
       const text = await service.explainConcept(question, session.content);
-      setMockExplanations(prev => ({ ...prev, [idx]: { text, loading: false } }));
+      setMockExplanations((prev: MockExplanationsState) => ({ ...prev, [idx]: { text, loading: false } }));
     } catch (err) {
-      setMockExplanations(prev => ({ ...prev, [idx]: { text: "Errore spiegazione.", loading: false } }));
+      setMockExplanations((prev: MockExplanationsState) => ({ ...prev, [idx]: { text: "Errore spiegazione.", loading: false } }));
     }
   };
 
@@ -175,7 +178,7 @@ const MockExamView: React.FC<MockExamViewProps> = ({ session, onUpdateSession })
                         <ICONS.Brain className="w-5 h-5" />
                       </button>
                       <button 
-                        onClick={() => setRevealedSolutions(prev => ({ ...prev, [idx]: !prev[idx] }))} 
+                        onClick={() => setRevealedSolutions((prev: RevealedSolutionsState) => ({ ...prev, [idx]: !prev[idx] }))} 
                         className="p-3 bg-slate-50 text-slate-600 rounded-xl hover:bg-slate-900 hover:text-white transition-all shadow-sm"
                         title="Rivela Soluzione"
                       >
