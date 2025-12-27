@@ -123,7 +123,8 @@ const SummaryView: React.FC<SummaryViewProps> = ({ summary }) => {
                 </div>
               </div>
             </div>
-          ))}
+          );
+        })}
       </div>
     </div>
   );
