@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { AppState, ExamSession, Importance, StudyPlanDay, User } from './types';
 import { GeminiService } from './services/geminiService';
@@ -78,10 +77,11 @@ const App: React.FC = () => {
         const subjectsToday = daySubjectOccupancy[dStr] || new Set();
         const isDayOff = session.dayOffs?.includes(dStr);
         
-        // REGOLA INVIOLABILE: Max 2 materie
-        const hasSlot = !isAnyExamDay && !isDayOff && (subjectsToday.size < 2 || subjectsToday.has(session.id));
+        // REGOLA INVIOLABILE: Max 2 materie diverse per giorno
+        const canAddSubject = !isAnyExamDay && !isDayOff && subjectsToday.size < 2;
+        const alreadyHasThisSubject = subjectsToday.has(session.id);
         
-        if (hasSlot) {
+        if (canAddSubject || alreadyHasThisSubject) {
           availableDates.push(dStr);
         }
         cursor.setDate(cursor.getDate() + 1);
@@ -131,12 +131,17 @@ const App: React.FC = () => {
         if (s.id !== sessionId) return s;
         const plan = s.data.studyPlan.map(m => {
           if (m.uid !== moduleUid) return m;
-          const newCompleted = [...(m.completedTasks || [])];
+          const newCompleted = [...(m.completedTasks || Array(m.tasks.length).fill(false))];
           newCompleted[taskIdx] = !newCompleted[taskIdx];
           return { ...m, completedTasks: newCompleted };
         });
         return { ...s, data: { ...s.data, studyPlan: plan } };
       });
+      // Salva immediatamente
+      StorageService.saveSessions(updated);
+      if (prev.user) {
+        StorageService.pushToCloud(prev.user.email, updated);
+      }
       return { ...prev, sessions: updated };
     });
   }, []);
@@ -149,14 +154,13 @@ const App: React.FC = () => {
           const user = JSON.parse(savedUser);
           setLoadingStep('Recupero dati multi-dispositivo...');
           
-          // Pull dal Cloud al mount (Garantisce che se entro da un altro PC vedo tutto)
           const cloudSessions = await StorageService.pullFromCloud(user.email);
           const savedSessions = cloudSessions || await StorageService.loadSessions();
           
           setState(prev => ({
             ...prev, 
             user,
-            sessions: rebalanceAllSessions(savedSessions), // Ricalcolo iniziale per sicurezza
+            sessions: rebalanceAllSessions(savedSessions),
             activeSessionId: savedSessions.length > 0 ? savedSessions[0].id : null,
             isAddingNew: savedSessions.length === 0, 
             isLoading: false
@@ -190,7 +194,7 @@ const App: React.FC = () => {
       isLoading: false 
     }));
     setActiveTab('summary');
-    setIsGlobalPlan(true); // Mostra il calendario subito dopo il login per dare senso di continuità
+    setIsGlobalPlan(true);
   };
 
   const handleLogout = () => {
@@ -212,7 +216,13 @@ const App: React.FC = () => {
         const plan = s.data.studyPlan.map(m => m.uid === moduleUid ? { ...m, assignedDate: newDate, isManuallyPlaced: true } : m);
         return { ...s, data: { ...s.data, studyPlan: plan } };
       });
-      return { ...prev, sessions: rebalanceAllSessions(updated) };
+      const rebalanced = rebalanceAllSessions(updated);
+      // Salva immediatamente dopo lo spostamento
+      StorageService.saveSessions(rebalanced);
+      if (prev.user) {
+        StorageService.pushToCloud(prev.user.email, rebalanced);
+      }
+      return { ...prev, sessions: rebalanced };
     });
   }, [rebalanceAllSessions]);
 
@@ -325,7 +335,14 @@ const App: React.FC = () => {
                 {isGlobalPlan ? (
                   <PlanView 
                     sessions={state.sessions} 
-                    onUpdateSessions={(u) => setState(p => ({ ...p, sessions: rebalanceAllSessions(u) }))} 
+                    onUpdateSessions={(u) => {
+                      const rebalanced = rebalanceAllSessions(u);
+                      setState(p => ({ ...p, sessions: rebalanced }));
+                      StorageService.saveSessions(rebalanced);
+                      if (state.user) {
+                        StorageService.pushToCloud(state.user.email, rebalanced);
+                      }
+                    }} 
                     onMoveModule={handleMoveModule} 
                     onRebalance={handleManualRebalance}
                     onToggleTask={handleToggleTask}
