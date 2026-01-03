@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { ICONS } from '../constants';
 import { ExamSession, User } from '../types';
@@ -101,6 +100,15 @@ const Sidebar: React.FC<SidebarProps> = ({
 
               <div className="mt-8 pt-6 border-t border-slate-200 space-y-1">
                 <p className="px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Opzioni</p>
+                
+                {/* NUOVO: Pulsante Aggiorna Materiali */}
+                <button 
+                  onClick={() => { onUpdateMaterials(); if(window.innerWidth < 1024) onClose(); }}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold text-blue-600 hover:bg-blue-50 transition-all"
+                >
+                  <ICONS.Upload className="w-4 h-4" />
+                  Aggiorna Materiali
+                </button>
                 
                 {activeSess && !activeSess.isPassed && (
                   <button 

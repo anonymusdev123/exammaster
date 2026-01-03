@@ -73,10 +73,10 @@ const PlanView: React.FC<PlanViewProps> = ({ sessions, onUpdateSessions, onMoveM
         const isCompleted = dayPlan.completedTasks?.every(t => t) && (dayPlan.completedTasks?.length || 0) > 0;
         const isSim = dayPlan.topics[0] === "SIMULAZIONE";
         
-        // Calcola ore totali dai task
+        // Calcola ore totali dai task - se non ci sono ore esplicite, stima 2h per task
         const totalHours = dayPlan.tasks.reduce((sum, task) => {
           const match = task.match(/(\d+(?:\.\d+)?)\s*h/i);
-          return sum + (match ? parseFloat(match[1]) : 0);
+          return sum + (match ? parseFloat(match[1]) : 2); // Default 2h per task
         }, 0);
         
         map[dateStr].courseBlocks.get(courseKey).modules.push({
@@ -240,7 +240,7 @@ const PlanView: React.FC<PlanViewProps> = ({ sessions, onUpdateSessions, onMoveM
                         className={`${block.color.bg} ${block.color.text} text-[8px] font-bold px-1.5 py-1 rounded shadow-sm transition-all hover:scale-105 cursor-pointer ${allCompleted ? 'opacity-40 line-through' : ''} ${hasSim ? "ring-2 ring-white ring-offset-1 ring-offset-emerald-500" : ""}`}
                       >
                         <div className="truncate uppercase">{hasSim ? `🔥 ${block.course}` : block.course}</div>
-                        <div className="text-[7px] opacity-80 mt-0.5">⏱️ {totalHours > 0 ? `${totalHours.toFixed(1)}h` : 'N/D'}</div>
+                        <div className="text-[7px] opacity-80 mt-0.5">⏱️ {totalHours.toFixed(1)}h</div>
                       </div>
                     );
                   })}
