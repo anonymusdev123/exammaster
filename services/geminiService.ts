@@ -39,7 +39,7 @@ export class GeminiService {
     examDate: string
   ): Promise<StudyMaterialData> {
     const modelName = "gemini-3-flash-preview";
-    const maxChars = 30000;
+    const maxChars = 15000; // Ridotto da 30000 per velocità
     const truncatedText = text.length > maxChars ? text.substring(0, maxChars) : text;
 
     // Calcola giorni disponibili fino all'esame

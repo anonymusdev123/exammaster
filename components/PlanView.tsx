@@ -22,7 +22,7 @@ const SESSION_COLORS = [
 const PlanView: React.FC<PlanViewProps> = ({ sessions, onUpdateSessions, onMoveModule, onRebalance, onToggleTask }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDayInfo, setSelectedDayInfo] = useState<{ date: string, courseBlocks: any[] } | null>(null);
-  const [, forceUpdate] = useState(0); // Forza re-render
+  const [refreshKey, setRefreshKey] = useState(0); // Per forzare aggiornamento completo
 
   const getLocalDateStr = (d: Date) => {
     const year = d.getFullYear();
@@ -30,6 +30,11 @@ const PlanView: React.FC<PlanViewProps> = ({ sessions, onUpdateSessions, onMoveM
     const day = String(d.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
   };
+
+  // Aggiungi effect per refresh quando sessions cambia
+  React.useEffect(() => {
+    setRefreshKey(k => k + 1);
+  }, [sessions]);
 
   const todayStr = getLocalDateStr(new Date());
 
@@ -327,11 +332,12 @@ const PlanView: React.FC<PlanViewProps> = ({ sessions, onUpdateSessions, onMoveM
                                         return (
                                           <li 
                                             key={idx}
-                                            onClick={(e) => {
+                                            onClick={async (e) => {
                                               e.stopPropagation();
                                               console.log('🔘 Click task:', { sessionId: block.sessionId, uid: module.plan.uid, idx, current: isCompleted });
-                                              onToggleTask(block.sessionId, module.plan.uid, idx);
-                                              forceUpdate(n => n + 1); // Forza aggiornamento UI
+                                              await onToggleTask(block.sessionId, module.plan.uid, idx);
+                                              // Aspetta un frame per il re-render
+                                              requestAnimationFrame(() => setRefreshKey(k => k + 1));
                                             }}
                                             className="flex items-start gap-3 p-3 bg-slate-50 rounded-xl text-sm font-medium border border-slate-100 cursor-pointer hover:bg-slate-100 transition-all active:scale-95"
                                           >

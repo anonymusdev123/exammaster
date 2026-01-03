@@ -147,7 +147,7 @@ const App: React.FC = () => {
     }));
   }, [rebalanceAllSessions]);
 
-  const handleToggleTask = useCallback((sessionId: string, moduleUid: string, taskIdx: number) => {
+  const handleToggleTask = useCallback(async (sessionId: string, moduleUid: string, taskIdx: number) => {
     console.log('🔄 Toggle Task:', { sessionId, moduleUid, taskIdx });
     setState(prev => {
       const updated = prev.sessions.map(s => {
@@ -162,11 +162,12 @@ const App: React.FC = () => {
         });
         return { ...s, data: { ...s.data, studyPlan: plan } };
       });
-      // Salva immediatamente
-      StorageService.saveSessions(updated);
-      if (prev.user) {
-        StorageService.pushToCloud(prev.user.email, updated);
-      }
+      // Salva immediatamente in background
+      Promise.all([
+        StorageService.saveSessions(updated),
+        prev.user ? StorageService.pushToCloud(prev.user.email, updated) : Promise.resolve()
+      ]).catch(err => console.error('Save error:', err));
+      
       return { ...prev, sessions: updated };
     });
   }, []);
@@ -203,8 +204,9 @@ const App: React.FC = () => {
   useEffect(() => {
     if (state.isLoading || !state.user) return;
     const handler = setTimeout(async () => {
-      await StorageService.saveSessions(state.sessions);
-      await StorageService.pushToCloud(state.user!.email, state.sessions);
+      // Salvataggio asincrono - non blocca l'UI
+      StorageService.saveSessions(state.sessions).catch(e => console.error('Save error:', e));
+      StorageService.pushToCloud(state.user!.email, state.sessions).catch(e => console.error('Cloud error:', e));
     }, 1000);
     return () => clearTimeout(handler);
   }, [state.sessions, state.isLoading, state.user]);
