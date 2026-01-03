@@ -240,7 +240,7 @@ const PlanView: React.FC<PlanViewProps> = ({ sessions, onUpdateSessions, onMoveM
                         className={`${block.color.bg} ${block.color.text} text-[8px] font-bold px-1.5 py-1 rounded shadow-sm transition-all hover:scale-105 cursor-pointer ${allCompleted ? 'opacity-40 line-through' : ''} ${hasSim ? "ring-2 ring-white ring-offset-1 ring-offset-emerald-500" : ""}`}
                       >
                         <div className="truncate uppercase">{hasSim ? `🔥 ${block.course}` : block.course}</div>
-                        <div className="text-[7px] opacity-80 mt-0.5">{totalHours > 0 ? `${totalHours.toFixed(1)}h` : `${block.modules.length} moduli`}</div>
+                        <div className="text-[7px] opacity-80 mt-0.5">⏱️ {totalHours > 0 ? `${totalHours.toFixed(1)}h` : 'N/D'}</div>
                       </div>
                     );
                   })}
