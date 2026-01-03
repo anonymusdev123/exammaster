@@ -332,12 +332,10 @@ const PlanView: React.FC<PlanViewProps> = ({ sessions, onUpdateSessions, onMoveM
                                         return (
                                           <li 
                                             key={idx}
-                                            onClick={async (e) => {
+                                            onClick={(e) => {
                                               e.stopPropagation();
                                               console.log('🔘 Click task:', { sessionId: block.sessionId, uid: module.plan.uid, idx, current: isCompleted });
-                                              await onToggleTask(block.sessionId, module.plan.uid, idx);
-                                              // Aspetta un frame per il re-render
-                                              requestAnimationFrame(() => setRefreshKey(k => k + 1));
+                                              onToggleTask(block.sessionId, module.plan.uid, idx);
                                             }}
                                             className="flex items-start gap-3 p-3 bg-slate-50 rounded-xl text-sm font-medium border border-slate-100 cursor-pointer hover:bg-slate-100 transition-all active:scale-95"
                                           >
