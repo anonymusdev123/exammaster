@@ -122,19 +122,50 @@ const App: React.FC = () => {
 
   const assignDatesToSession = useCallback((newSession: ExamSession, existingSessions: ExamSession[]): ExamSession => {
     const examDateObj = new Date(newSession.examDate);
+    const allExamDates = new Set(existingSessions.filter(s => !s.isPassed).map(s => s.examDate));
+    allExamDates.add(newSession.examDate);
+    
+    // Mappa delle materie già assegnate per giorno
+    const dayOccupancy: Record<string, Set<string>> = {};
+    
+    existingSessions.forEach(s => {
+      if (s.isPassed) return;
+      s.data.studyPlan.forEach(m => {
+        if (m.assignedDate) {
+          if (!dayOccupancy[m.assignedDate]) dayOccupancy[m.assignedDate] = new Set();
+          dayOccupancy[m.assignedDate].add(s.id);
+        }
+      });
+    });
+    
+    // Trova date disponibili rispettando max 2 materie/giorno
     const availableDates: string[] = [];
     let cursor = new Date(todayStr);
     
-    // Trova date disponibili
-    while (cursor < examDateObj) {
+    while (cursor < examDateObj && availableDates.length < 50) {
       const dStr = getLocalDateStr(cursor);
-      availableDates.push(dStr);
+      const isExamDay = allExamDates.has(dStr);
+      const subjectsCount = (dayOccupancy[dStr] || new Set()).size;
+      
+      // Può aggiungere se: non è esame E (ha meno di 2 materie OPPURE ha già questa materia)
+      if (!isExamDay && subjectsCount < 2) {
+        availableDates.push(dStr);
+      }
+      
       cursor.setDate(cursor.getDate() + 1);
     }
     
+    // SPALMA i moduli uniformemente - MAX 1 MODULO PER GIORNO
     const plan = newSession.data.studyPlan.map((m, idx) => {
-      const dateIdx = Math.min(Math.floor((idx * availableDates.length) / newSession.data.studyPlan.length), availableDates.length - 1);
-      return { ...m, assignedDate: availableDates[dateIdx] || todayStr };
+      // Prendi un giorno ogni N giorni per evitare raggruppamenti
+      const dateIdx = Math.min(idx, availableDates.length - 1);
+      const assignedDate = availableDates[dateIdx] || todayStr;
+      
+      // Segna questo giorno come occupato
+      if (!dayOccupancy[assignedDate]) dayOccupancy[assignedDate] = new Set();
+      dayOccupancy[assignedDate].add(newSession.id);
+      
+      return { ...m, assignedDate };
     });
     
     return { ...newSession, data: { ...newSession.data, studyPlan: plan } };
@@ -268,8 +299,11 @@ const App: React.FC = () => {
           ...s, examDate: config.examDate, examType: config.examType, depth: config.depth,
           content: newContent, data: updatedData, lastUpdateDate: getLocalDateStr()
         } : s);
-        // NON ribilanciare automaticamente - troppo lento
-        setState(prev => ({ ...prev, sessions: updatedSessions, isLoading: false }));
+        // Riassegna le date alla sessione aggiornata
+        const reAssigned = updatedSessions.map(s => 
+          s.id === state.activeSessionId ? assignDatesToSession(s, updatedSessions.filter(x => x.id !== s.id)) : s
+        );
+        setState(prev => ({ ...prev, sessions: reAssigned, isLoading: false }));
         setIsUpdatingSession(false);
       } else {
         setLoadingStep('Ottimizzazione Carico Cognitivo...');
