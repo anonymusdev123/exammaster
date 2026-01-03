@@ -191,48 +191,56 @@ IMPORTANTE: Genera SOLO ${maxModules} moduli. Se il materiale è tanto, selezion
 
       const parsed = JSON.parse(response.text || '{}');
       
-      // Post-processing: limita moduli e forza il formato corretto
+      // Log per debug
+      console.log('📊 AI ha generato:', {
+        moduli: parsed.studyPlan?.length || 0,
+        primoModulo: parsed.studyPlan?.[0]
+      });
+      
+      // ═══════════════════════════════════════════════════════════
+      // VALIDAZIONE POST-AI - CORREGGE QUALSIASI ERRORE DELL'AI
+      // ═══════════════════════════════════════════════════════════
+      
       if (parsed.studyPlan) {
-        // LIMITA A MAX MODULI
+        // STEP 1: Limita numero moduli (6-10 max)
         let studyPlan = parsed.studyPlan.slice(0, maxModules);
         
-        studyPlan = studyPlan.map((day: any) => {
-          const tasks = day.tasks || [];
+        // STEP 2: Forza ESATTAMENTE 4 task per modulo con ore FISSE
+        studyPlan = studyPlan.map((module: any, moduleIdx: number) => {
+          const topic = module.topics?.[0] || `Argomento ${moduleIdx + 1}`;
           
-          // Processa e FORZA il formato 1.5h+1.5h+1h+1h
-          let processedTasks = [
-            `[TEORIA] ${day.topics[0] || 'Studio teorico'} - parte 1 - 1.5h`,
-            `[TEORIA] ${day.topics[0] || 'Studio teorico'} - parte 2 - 1.5h`,
-            `[PRATICA] Esercizi su ${day.topics[0] || 'argomento'} - 1h`,
+          // FORZA SEMPRE QUESTO FORMATO - NON FIDARTI MAI DELL'AI
+          const fixedTasks = [
+            `[TEORIA] ${topic} - parte 1 - 1.5h`,
+            `[TEORIA] ${topic} - parte 2 - 1.5h`,
+            `[PRATICA] Esercizi su ${topic} - 1h`,
             `[PRATICA] Active recall e ripasso - 1h`
           ];
           
-          // Se l'AI ha fornito task, usa i loro nomi ma con ore fisse
-          if (tasks.length >= 4) {
-            processedTasks = [
-              tasks[0].replace(/(\d+(?:\.\d+)?)\s*h/i, '1.5h'),
-              tasks[1].replace(/(\d+(?:\.\d+)?)\s*h/i, '1.5h'),
-              tasks[2].replace(/(\d+(?:\.\d+)?)\s*h/i, '1h'),
-              tasks[3].replace(/(\d+(?:\.\d+)?)\s*h/i, '1h')
-            ].map(task => {
-              // Assicura formato [TIPO]
-              if (!task.startsWith('[TEORIA]') && !task.startsWith('[PRATICA]')) {
-                const isTheory = task.toLowerCase().includes('teor') || task.toLowerCase().includes('stud');
-                return `[${isTheory ? 'TEORIA' : 'PRATICA'}] ${task}`;
-              }
-              return task;
-            });
-          }
-          
           return {
-            ...day,
-            tasks: processedTasks,
-            uid: day.uid || this.generateUid(),
-            completedTasks: processedTasks.map(() => false),
+            day: moduleIdx + 1,
+            topics: [topic],
+            tasks: fixedTasks,
+            priority: module.priority || 'MEDIUM',
+            uid: this.generateUid(),
+            completedTasks: [false, false, false, false],
             isManuallyPlaced: false,
             assignedDate: null
           };
         });
+        
+        // STEP 3: Verifica finale - ogni modulo = 5h ESATTE
+        const allValid = studyPlan.every((m: any) => {
+          const totalHours = m.tasks.reduce((sum: number, task: string) => {
+            const match = task.match(/(\d+(?:\.\d+)?)\s*h/i);
+            return sum + (match ? parseFloat(match[1]) : 0);
+          }, 0);
+          return totalHours === 5; // DEVE essere esattamente 5h
+        });
+        
+        if (!allValid) {
+          console.error('⚠️ AI ha generato moduli non validi - applicato formato fisso');
+        }
         
         parsed.studyPlan = studyPlan;
       }
