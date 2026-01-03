@@ -22,6 +22,7 @@ const SESSION_COLORS = [
 const PlanView: React.FC<PlanViewProps> = ({ sessions, onUpdateSessions, onMoveModule, onRebalance, onToggleTask }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDayInfo, setSelectedDayInfo] = useState<{ date: string, courseBlocks: any[] } | null>(null);
+  const [, forceUpdate] = useState(0); // Forza re-render
 
   const getLocalDateStr = (d: Date) => {
     const year = d.getFullYear();
@@ -328,8 +329,9 @@ const PlanView: React.FC<PlanViewProps> = ({ sessions, onUpdateSessions, onMoveM
                                             key={idx}
                                             onClick={(e) => {
                                               e.stopPropagation();
-                                              console.log('Click task:', { sessionId: block.sessionId, uid: module.plan.uid, idx });
+                                              console.log('🔘 Click task:', { sessionId: block.sessionId, uid: module.plan.uid, idx, current: isCompleted });
                                               onToggleTask(block.sessionId, module.plan.uid, idx);
+                                              forceUpdate(n => n + 1); // Forza aggiornamento UI
                                             }}
                                             className="flex items-start gap-3 p-3 bg-slate-50 rounded-xl text-sm font-medium border border-slate-100 cursor-pointer hover:bg-slate-100 transition-all active:scale-95"
                                           >

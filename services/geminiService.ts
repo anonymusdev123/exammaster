@@ -46,7 +46,7 @@ export class GeminiService {
     const today = new Date();
     const exam = new Date(examDate);
     const daysAvailable = Math.max(1, Math.floor((exam.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)));
-    const maxModules = Math.min(daysAvailable, 12); // Max 12 moduli totali
+    const maxModules = Math.min(Math.max(6, Math.floor(daysAvailable * 0.8)), 10); // 6-10 moduli max
 
     const prompt = `
 RUOLO: Senior Instructional Designer Universitario + Tutor Strategico AI.
@@ -58,14 +58,16 @@ CORSO: "${course}" (${faculty}) | DATA ESAME: ${examDate} | TIPO: ${examType} | 
 
 🔴 REGOLA #1: NUMERO MODULI
 - Genera MASSIMO ${maxModules} moduli TOTALI per questa materia
+- Ogni modulo = 1 GIORNO di studio
+- Se hai 10 giorni disponibili, crea MAX 8 moduli
 - Concentrati SOLO sui concetti più importanti e probabili all'esame
-- Meglio pochi moduli ben fatti che tanti superficiali
 
-🔴 REGOLA #2: CARICO GIORNALIERO
-- OGNI modulo deve contenere MAX 6h di studio totale (somma di tutti i task)
-- Mai superare 6h per modulo
-- Esempio: 2h teoria + 2h teoria + 1h pratica + 1h pratica = 6h ✅
-- Esempio: 3h + 3h + 2h + 2h = 10h ❌ TROPPO!
+🔴 REGOLA #2: CARICO GIORNALIERO (MASSIMA PRIORITÀ!)
+- OGNI modulo deve contenere MAX 5h di studio totale
+- FORMULA RIGIDA: 2 task teoria (1.5h + 1.5h) + 2 task pratica (1h + 1h) = 5h
+- Mai superare 5h per modulo
+- Esempio CORRETTO: 1.5h + 1.5h + 1h + 1h = 5h ✅
+- Esempio SBAGLIATO: 3h + 3h + 2h + 2h = 10h ❌
 
 🔴 REGOLA #3: FORMATO TASK OBBLIGATORIO
 OGNI task DEVE seguire ESATTAMENTE questo formato:
@@ -83,11 +85,13 @@ Dove:
 "[PRATICA] Active recall concetti precedenti - 1h"
 
 🔴 REGOLA #4: STRUTTURA SESSIONE
-Ogni modulo DEVE avere ESATTAMENTE 4 task:
-- 2 task [TEORIA] (1.5-3h ciascuno)
-- 2 task [PRATICA] (1-2h ciascuno)
+Ogni modulo DEVE avere ESATTAMENTE 4 task CON QUESTE ORE FISSE:
+- Task 1 [TEORIA]: 1.5h
+- Task 2 [TEORIA]: 1.5h  
+- Task 3 [PRATICA]: 1h
+- Task 4 [PRATICA]: 1h
 
-TOTALE MODULO: 4-7h MAX
+TOTALE MODULO: 5h SEMPRE
 
 🔴 REGOLA #5: PRIORITÀ
 - Profondità ${depth}: 
@@ -105,21 +109,21 @@ ${truncatedText || "Nessun materiale dettagliato - genera piano generico basato 
 
 ═══════════════════════════════════════════════════════════════════
 
-📋 ESEMPIO DI OUTPUT CORRETTO (MODULO DA 6H):
+📋 ESEMPIO DI OUTPUT CORRETTO (MODULO DA 5H FISSO):
 
 {
   "day": 1,
   "topics": ["Statistica Descrittiva"],
   "tasks": [
-    "[TEORIA] Media, moda e mediana - 2h",
+    "[TEORIA] Media, moda e mediana - 1.5h",
     "[TEORIA] Varianza e deviazione standard - 1.5h",
-    "[PRATICA] Esercizi calcolo statistiche base - 1.5h",
+    "[PRATICA] Esercizi calcolo statistiche base - 1h",
     "[PRATICA] Active recall definizioni chiave - 1h"
   ],
   "priority": "HIGH"
 }
 
-TOTALE: 6h ✅
+TOTALE: 5h ✅ SEMPRE QUESTO FORMATO!
 
 IMPORTANTE: Genera SOLO ${maxModules} moduli. Se il materiale è tanto, seleziona gli argomenti PIÙ PROBABILI all'esame.
     `;
@@ -195,61 +199,26 @@ IMPORTANTE: Genera SOLO ${maxModules} moduli. Se il materiale è tanto, selezion
         studyPlan = studyPlan.map((day: any) => {
           const tasks = day.tasks || [];
           
-          // Processa e valida ogni task
-          let processedTasks = tasks.map((task: string) => {
-            // Se il task non ha il formato corretto, aggiungilo
-            if (!task.includes(' - ') || !task.includes('h')) {
-              const isTheory = task.toLowerCase().includes('stud') || 
-                              task.toLowerCase().includes('teor') || 
-                              task.toLowerCase().includes('analisi') ||
-                              task.toLowerCase().includes('compren');
-              
-              const type = isTheory ? 'TEORIA' : 'PRATICA';
-              const hours = isTheory ? '2h' : '1.5h';
-              
-              if (!task.startsWith('[')) {
-                return `[${type}] ${task} - ${hours}`;
-              } else {
-                return `${task} - ${hours}`;
-              }
-            }
-            
-            // Limita le ore di ogni singolo task a MAX 3h
-            const match = task.match(/(\d+(?:\.\d+)?)\s*h/i);
-            if (match && parseFloat(match[1]) > 3) {
-              return task.replace(/(\d+(?:\.\d+)?)\s*h/i, '3h');
-            }
-            
-            return task;
-          });
+          // Processa e FORZA il formato 1.5h+1.5h+1h+1h
+          let processedTasks = [
+            `[TEORIA] ${day.topics[0] || 'Studio teorico'} - parte 1 - 1.5h`,
+            `[TEORIA] ${day.topics[0] || 'Studio teorico'} - parte 2 - 1.5h`,
+            `[PRATICA] Esercizi su ${day.topics[0] || 'argomento'} - 1h`,
+            `[PRATICA] Active recall e ripasso - 1h`
+          ];
           
-          // Assicura 4 task
-          while (processedTasks.length < 4) {
-            const needsTheory = processedTasks.filter((t: string) => t.includes('[TEORIA]')).length < 2;
-            if (needsTheory) {
-              processedTasks.push(`[TEORIA] Studio approfondito - 2h`);
-            } else {
-              processedTasks.push(`[PRATICA] Esercizi applicativi - 1h`);
-            }
-          }
-          
-          // Limita a 4 task se ce ne sono di più
-          processedTasks = processedTasks.slice(0, 4);
-          
-          // Calcola totale ore e ridimensiona se supera 7h
-          let totalHours = processedTasks.reduce((sum: number, task: string) => {
-            const match = task.match(/(\d+(?:\.\d+)?)\s*h/i);
-            return sum + (match ? parseFloat(match[1]) : 2);
-          }, 0);
-          
-          // Se supera 7h, riduci proporzionalmente
-          if (totalHours > 7) {
-            const factor = 6 / totalHours; // Target 6h
-            processedTasks = processedTasks.map((task: string) => {
-              const match = task.match(/(\d+(?:\.\d+)?)\s*h/i);
-              if (match) {
-                const newHours = Math.max(1, Math.round(parseFloat(match[1]) * factor * 2) / 2); // Arrotonda a 0.5
-                return task.replace(/(\d+(?:\.\d+)?)\s*h/i, `${newHours}h`);
+          // Se l'AI ha fornito task, usa i loro nomi ma con ore fisse
+          if (tasks.length >= 4) {
+            processedTasks = [
+              tasks[0].replace(/(\d+(?:\.\d+)?)\s*h/i, '1.5h'),
+              tasks[1].replace(/(\d+(?:\.\d+)?)\s*h/i, '1.5h'),
+              tasks[2].replace(/(\d+(?:\.\d+)?)\s*h/i, '1h'),
+              tasks[3].replace(/(\d+(?:\.\d+)?)\s*h/i, '1h')
+            ].map(task => {
+              // Assicura formato [TIPO]
+              if (!task.startsWith('[TEORIA]') && !task.startsWith('[PRATICA]')) {
+                const isTheory = task.toLowerCase().includes('teor') || task.toLowerCase().includes('stud');
+                return `[${isTheory ? 'TEORIA' : 'PRATICA'}] ${task}`;
               }
               return task;
             });
