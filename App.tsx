@@ -130,13 +130,40 @@ const App: React.FC = () => {
     });
   }, [todayStr]);
 
+  const handleManualRebalance = useCallback(() => {
+    setState(prev => ({
+      ...prev,
+      sessions: rebalanceAllSessions(prev.sessions)
+    }));
+  }, [rebalanceAllSessions]);
+
+  const handleToggleTask = useCallback((sessionId: string, moduleUid: string, taskIdx: number) => {
+    setState(prev => {
+      const updated = prev.sessions.map(s => {
+        if (s.id !== sessionId) return s;
+        const plan = s.data.studyPlan.map(m => {
+          if (m.uid !== moduleUid) return m;
+          const newCompleted = [...(m.completedTasks || [])];
+          newCompleted[taskIdx] = !newCompleted[taskIdx];
+          return { ...m, completedTasks: newCompleted };
+        });
+        return { ...s, data: { ...s.data, studyPlan: plan } };
+      });
+      return { ...prev, sessions: updated };
+    });
+  }, []);
+
   useEffect(() => {
     const init = async () => {
       try {
         const savedUser = localStorage.getItem('em_user');
         if (savedUser) {
           const user = JSON.parse(savedUser);
-          const savedSessions = await StorageService.loadSessions();
+          setLoadingStep('Sincronizzazione Cloud in corso...');
+          // Pull dal Cloud al mount se l'utente è loggato (per recuperare dati da altri dispositivi)
+          const cloudSessions = await StorageService.pullFromCloud(user.email);
+          const savedSessions = cloudSessions || await StorageService.loadSessions();
+          
           setState(prev => ({
             ...prev, 
             user,
@@ -155,27 +182,26 @@ const App: React.FC = () => {
     init();
   }, []);
 
+  // Sync bidirezionale: push al cloud ogni volta che le sessioni cambiano
   useEffect(() => {
     if (state.isLoading || !state.user) return;
     const handler = setTimeout(async () => {
       await StorageService.saveSessions(state.sessions);
+      await StorageService.pushToCloud(state.user!.email, state.sessions);
     }, 1000);
     return () => clearTimeout(handler);
   }, [state.sessions, state.isLoading, state.user]);
 
-  const handleAuthSuccess = (user: User) => {
-    setState(prev => ({ ...prev, user, isLoading: true }));
-    // Simulazione scaricamento dati dal cloud
-    setTimeout(async () => {
-      const savedSessions = await StorageService.loadSessions();
-      setState(prev => ({ 
-        ...prev, 
-        sessions: savedSessions, 
-        activeSessionId: savedSessions.length > 0 ? savedSessions[0].id : null,
-        isAddingNew: savedSessions.length === 0,
-        isLoading: false 
-      }));
-    }, 1000);
+  const handleAuthSuccess = (user: User, cloudSessions: ExamSession[] | null) => {
+    setState(prev => ({ 
+      ...prev, 
+      user, 
+      sessions: cloudSessions || [],
+      activeSessionId: cloudSessions && cloudSessions.length > 0 ? cloudSessions[0].id : null,
+      isAddingNew: !cloudSessions || cloudSessions.length === 0,
+      isLoading: false 
+    }));
+    setActiveTab('summary');
   };
 
   const handleLogout = () => {
@@ -276,8 +302,8 @@ const App: React.FC = () => {
                   <div className="absolute inset-0 border-[6px] border-blue-600 rounded-full border-t-transparent animate-spin"></div>
                   <ICONS.Brain className="absolute inset-0 m-auto w-10 h-10 text-blue-600" />
                 </div>
-                <h3 className="text-2xl font-black uppercase text-slate-900 italic tracking-tighter mb-2">{loadingStep || 'Sincronizzazione...'}</h3>
-                <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em]">Ottimizzazione Carico Cognitivo</p>
+                <h3 className="text-2xl font-black uppercase text-slate-900 italic tracking-tighter mb-2">{loadingStep || 'Sincronizzazione Cloud...'}</h3>
+                <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em]">Aggiornamento in tempo reale attivo</p>
               </div>
             </div>
         ) : state.isAddingNew || isUpdatingSession ? (
@@ -308,7 +334,13 @@ const App: React.FC = () => {
             <div className="flex-1 overflow-y-auto scrollbar-hide">
               <div className="p-6 md:p-12 max-w-7xl mx-auto w-full pb-20">
                 {isGlobalPlan ? (
-                  <PlanView sessions={state.sessions} onUpdateSessions={(u) => setState(p => ({ ...p, sessions: rebalanceAllSessions(u) }))} onMoveModule={handleMoveModule} />
+                  <PlanView 
+                    sessions={state.sessions} 
+                    onUpdateSessions={(u) => setState(p => ({ ...p, sessions: rebalanceAllSessions(u) }))} 
+                    onMoveModule={handleMoveModule} 
+                    onRebalance={handleManualRebalance}
+                    onToggleTask={handleToggleTask}
+                  />
                 ) : activeSess ? (
                   <div className="space-y-8">
                     {activeSess.isPassed && <div className="bg-emerald-600 p-10 rounded-[3rem] text-white shadow-2xl animate-slideDown"><h3 className="text-3xl font-black uppercase tracking-tighter text-center">Esame Superato! 🎉</h3></div>}

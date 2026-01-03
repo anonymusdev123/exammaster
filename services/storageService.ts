@@ -4,6 +4,7 @@ import { ExamSession } from '../types';
 const DB_NAME = 'ExamMasterDB';
 const STORE_NAME = 'sessions';
 const DB_VERSION = 1;
+const CLOUD_MOCK_PREFIX = 'EM_CLOUD_STORAGE_';
 
 export class StorageService {
   private static openDB(): Promise<IDBDatabase> {
@@ -20,12 +21,12 @@ export class StorageService {
     });
   }
 
+  // Salvataggio locale veloce (IndexedDB)
   static async saveSessions(sessions: ExamSession[]): Promise<void> {
     const db = await this.openDB();
     const tx = db.transaction(STORE_NAME, 'readwrite');
     const store = tx.objectStore(STORE_NAME);
     
-    // Pulizia veloce per sincronizzare lo stato
     await new Promise<void>((resolve, reject) => {
       const clearReq = store.clear();
       clearReq.onsuccess = () => resolve();
@@ -51,5 +52,37 @@ export class StorageService {
       request.onsuccess = () => resolve(request.result || []);
       request.onerror = () => reject(request.error);
     });
+  }
+
+  // --- CLOUD SYNC SIMULATION ---
+  
+  // Spinge i dati verso il "Cloud" (simulato con localStorage globale per account)
+  static async pushToCloud(userEmail: string, sessions: ExamSession[]): Promise<void> {
+    const cloudKey = CLOUD_MOCK_PREFIX + userEmail.toLowerCase();
+    const data = JSON.stringify({
+      sessions,
+      lastSync: Date.now()
+    });
+    localStorage.setItem(cloudKey, data);
+    // In produzione qui ci sarebbe: await fetch('/api/sync', { method: 'POST', body: data })
+  }
+
+  // Recupera i dati dal "Cloud" quando si accede da un nuovo dispositivo
+  static async pullFromCloud(userEmail: string): Promise<ExamSession[] | null> {
+    const cloudKey = CLOUD_MOCK_PREFIX + userEmail.toLowerCase();
+    const cloudData = localStorage.getItem(cloudKey);
+    if (!cloudData) return null;
+    
+    try {
+      const parsed = JSON.parse(cloudData);
+      // Sincronizziamo il database locale con quello cloud appena scaricato
+      if (parsed.sessions) {
+        await this.saveSessions(parsed.sessions);
+        return parsed.sessions;
+      }
+    } catch (e) {
+      console.error("Cloud Pull Error", e);
+    }
+    return null;
   }
 }

@@ -7,6 +7,8 @@ interface PlanViewProps {
   sessions: ExamSession[];
   onUpdateSessions: (updated: ExamSession[]) => void;
   onMoveModule: (sessionId: string, moduleUid: string, newDate: string) => void;
+  onRebalance: () => void;
+  onToggleTask: (sessionId: string, moduleUid: string, taskIdx: number) => void;
 }
 
 const SESSION_COLORS = [
@@ -18,7 +20,7 @@ const SESSION_COLORS = [
   { bg: 'bg-orange-600', text: 'text-orange-50', border: 'border-orange-700', light: 'bg-orange-50' },
 ];
 
-const PlanView: React.FC<PlanViewProps> = ({ sessions, onUpdateSessions, onMoveModule }) => {
+const PlanView: React.FC<PlanViewProps> = ({ sessions, onUpdateSessions, onMoveModule, onRebalance, onToggleTask }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDayInfo, setSelectedDayInfo] = useState<{ date: string, tasks: any[], exams: any[] } | null>(null);
 
@@ -139,10 +141,20 @@ const PlanView: React.FC<PlanViewProps> = ({ sessions, onUpdateSessions, onMoveM
 
   return (
     <div className="space-y-8 animate-fadeIn">
-      <div className="flex justify-between items-center bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100">
-        <button onClick={() => setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth() - 1)))} className="p-3 border rounded-xl hover:bg-slate-50 transition-all text-slate-400"><ICONS.ArrowRight className="w-5 h-5 rotate-180" /></button>
-        <h2 className="text-xl font-black text-slate-900 capitalize tracking-tight">{currentDate.toLocaleDateString('it-IT', { month: 'long', year: 'numeric' })}</h2>
-        <button onClick={() => setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth() + 1)))} className="p-3 border rounded-xl hover:bg-slate-50 transition-all text-slate-400"><ICONS.ArrowRight className="w-5 h-5" /></button>
+      <div className="flex flex-col md:flex-row gap-6 justify-between items-center bg-white p-8 rounded-[3rem] shadow-sm border border-slate-100">
+        <div className="flex items-center gap-4">
+          <button onClick={() => setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth() - 1)))} className="p-3 border-2 border-slate-100 rounded-2xl hover:bg-slate-50 transition-all text-slate-400"><ICONS.ArrowRight className="w-5 h-5 rotate-180" /></button>
+          <h2 className="text-xl font-black text-slate-900 capitalize tracking-tight min-w-[150px] text-center">{currentDate.toLocaleDateString('it-IT', { month: 'long', year: 'numeric' })}</h2>
+          <button onClick={() => setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth() + 1)))} className="p-3 border-2 border-slate-100 rounded-2xl hover:bg-slate-50 transition-all text-slate-400"><ICONS.ArrowRight className="w-5 h-5" /></button>
+        </div>
+
+        <button 
+          onClick={onRebalance}
+          className="flex items-center gap-3 px-8 py-4 bg-gradient-to-r from-blue-600 to-indigo-700 text-white rounded-[2rem] text-[10px] font-black uppercase tracking-widest hover:scale-105 active:scale-95 transition-all shadow-xl shadow-blue-500/30"
+        >
+          <ICONS.Brain className="w-4 h-4" />
+          Ottimizza Piano Strategico
+        </button>
       </div>
 
       <div className="bg-white rounded-[3rem] shadow-2xl border border-slate-100 overflow-hidden">
@@ -257,9 +269,17 @@ const PlanView: React.FC<PlanViewProps> = ({ sessions, onUpdateSessions, onMoveM
                               </div>
                               <ul className="space-y-3">
                                 {t.plan.tasks.map((tk: string, j: number) => (
-                                  <li key={j} className="flex items-start gap-4 p-4 bg-white rounded-2xl text-sm font-bold border border-slate-100 shadow-sm text-slate-700">
-                                    <div className={`w-5 h-5 rounded-lg border-2 ${t.plan.completedTasks?.[j] ? 'bg-emerald-500 border-emerald-500' : 'border-slate-200'} shrink-0 mt-0.5`}></div>
-                                    {tk}
+                                  <li 
+                                    key={j} 
+                                    onClick={() => onToggleTask(t.sessionId, t.plan.uid, j)}
+                                    className="flex items-start gap-4 p-4 bg-white rounded-2xl text-sm font-bold border border-slate-100 shadow-sm text-slate-700 cursor-pointer hover:bg-slate-50 transition-all active:scale-95"
+                                  >
+                                    <div className={`w-5 h-5 rounded-lg border-2 flex items-center justify-center transition-all ${t.plan.completedTasks?.[j] ? 'bg-emerald-500 border-emerald-500 shadow-lg shadow-emerald-500/20' : 'border-slate-200'} shrink-0 mt-0.5`}>
+                                      {t.plan.completedTasks?.[j] && (
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3 text-white" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>
+                                      )}
+                                    </div>
+                                    <span className={t.plan.completedTasks?.[j] ? 'line-through text-slate-400 transition-all' : ''}>{tk}</span>
                                   </li>
                                 ))}
                               </ul>
