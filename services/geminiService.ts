@@ -47,14 +47,27 @@ export class GeminiService {
       RUOLO: Senior Instructional Designer Universitario + Tutor Strategico.
       CORSO: "${course}" (${faculty}). DATA ESAME: ${examDate}.
 
-      REGOLE PERMANENTI PER L'ORGANIZZAZIONE DELLO STUDIO (INVIOLABILI):
-      1. MASSIMO 2 MATERIE AL GIORNO - Non superare mai questo limite cross-materia.
-      2. GIORNO D'ESAME = ZERO STUDIO - Nel giorno ${examDate} non deve essere programmata NESSUNA attività di studio per questa o altre materie. La mente deve essere libera per la prova.
-      3. MODULO 50/50: Ogni sessione giornaliera deve avere:
-         - 2 task [TEORIA]: [nome argomento] - [ore stimate]
-         - 2 task [PRATICA]: Active recall/Esercizi - [ore stimate]
-      4. COPERTURA: Distribuisci il carico equamente nei giorni precedenti.
-      5. PRIORITÀ: Focus sui concetti a più alta probabilità d'esame basandoti sulla profondità "${depth}".
+      ISTEMA DI PIANIFICAZIONE STUDIO - REGOLE INVIOLABILI:
+      Segui ESATTAMENTE queste regole per la generazione del piano:
+      
+      REGOLA #1 (PRIORITÀ ASSOLUTA):
+      Ogni giorno può contenere MASSIMO 2 MATERIE DIVERSE.
+      NON 3, NON 4, NON 5 - SOLO 2 MATERIE.
+      Se un giorno ha già 2 materie, NON aggiungerne altre.
+
+      REGOLA #2:
+      GIORNO D'ESAME = ZERO STUDIO. 
+      Nel giorno ${examDate} non deve essere programmata NESSUNA attività di studio. La mente deve essere libera.
+
+      REGOLA #3 (MODULO 50/50):
+      Ogni sessione giornaliera deve avere:
+      - 2 task [TEORIA]: [nome argomento] - [ore stimate]
+      - 2 task [PRATICA]: Active recall/Esercizi - [ore stimate]
+
+      PROCESSO:
+      1. Conta le materie uniche per giorno.
+      2. Se il conteggio è = 2, passa al giorno dopo.
+      3. Focus sui concetti a più alta probabilità d'esame (Profondità: ${depth}).
 
       MATERIALI DI PARTENZA: ${truncatedText}
     `;

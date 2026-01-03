@@ -40,6 +40,7 @@ const App: React.FC = () => {
   const todayStr = useMemo(() => getLocalDateStr(), []);
 
   const rebalanceAllSessions = useCallback((allSessions: ExamSession[]): ExamSession[] => {
+    // 1. Ordina le sessioni per data esame (priorità a chi scade prima)
     const sortedSessions = [...allSessions].sort((a, b) => 
       new Date(a.examDate).getTime() - new Date(b.examDate).getTime()
     );
@@ -47,6 +48,7 @@ const App: React.FC = () => {
     const allExamDates = new Set(sortedSessions.filter(s => !s.isPassed).map(s => s.examDate));
     const daySubjectOccupancy: Record<string, Set<string>> = {};
 
+    // 2. Registra i blocchi fissi (manuali o passati)
     sortedSessions.forEach(s => {
       s.data.studyPlan.forEach(m => {
         if (m.assignedDate && (m.isManuallyPlaced || m.assignedDate < todayStr || m.completedTasks?.some(v => v))) {
@@ -76,6 +78,7 @@ const App: React.FC = () => {
         const subjectsToday = daySubjectOccupancy[dStr] || new Set();
         const isDayOff = session.dayOffs?.includes(dStr);
         
+        // REGOLA INVIOLABILE: Max 2 materie
         const hasSlot = !isAnyExamDay && !isDayOff && (subjectsToday.size < 2 || subjectsToday.has(session.id));
         
         if (hasSlot) {
@@ -94,24 +97,9 @@ const App: React.FC = () => {
           if (!daySubjectOccupancy[chosenDate]) daySubjectOccupancy[chosenDate] = new Set();
           daySubjectOccupancy[chosenDate].add(session.id);
         });
-
-        const occupiedDates = new Set(finalPlan.map(p => p.assignedDate));
-        availableDates.forEach(d => {
-          if (!occupiedDates.has(d)) {
-             const subjectsToday = daySubjectOccupancy[d] || new Set();
-             if (subjectsToday.size < 2) {
-               finalPlan.push({
-                 uid: `recap-${session.id}-${d}`, day: 0, topics: ["Ripasso Strategico"],
-                 tasks: ["[PRATICA] Active Recall sui moduli precedenti - 1h", "[PRATICA] Focus su lacune - 1h"],
-                 priority: Importance.MEDIUM, assignedDate: d, completedTasks: [false, false]
-               });
-               if (!daySubjectOccupancy[d]) daySubjectOccupancy[d] = new Set();
-               daySubjectOccupancy[d].add(session.id);
-             }
-          }
-        });
       }
 
+      // 3. Gestione Sim d'Esame (Giorno prima dell'esame se libero)
       const dayBeforeExam = new Date(session.examDate);
       dayBeforeExam.setDate(dayBeforeExam.getDate() - 1);
       const dbStr = getLocalDateStr(dayBeforeExam);
@@ -159,15 +147,16 @@ const App: React.FC = () => {
         const savedUser = localStorage.getItem('em_user');
         if (savedUser) {
           const user = JSON.parse(savedUser);
-          setLoadingStep('Sincronizzazione Cloud in corso...');
-          // Pull dal Cloud al mount se l'utente è loggato (per recuperare dati da altri dispositivi)
+          setLoadingStep('Recupero dati multi-dispositivo...');
+          
+          // Pull dal Cloud al mount (Garantisce che se entro da un altro PC vedo tutto)
           const cloudSessions = await StorageService.pullFromCloud(user.email);
           const savedSessions = cloudSessions || await StorageService.loadSessions();
           
           setState(prev => ({
             ...prev, 
             user,
-            sessions: savedSessions, 
+            sessions: rebalanceAllSessions(savedSessions), // Ricalcolo iniziale per sicurezza
             activeSessionId: savedSessions.length > 0 ? savedSessions[0].id : null,
             isAddingNew: savedSessions.length === 0, 
             isLoading: false
@@ -180,9 +169,8 @@ const App: React.FC = () => {
       }
     };
     init();
-  }, []);
+  }, [rebalanceAllSessions]);
 
-  // Sync bidirezionale: push al cloud ogni volta che le sessioni cambiano
   useEffect(() => {
     if (state.isLoading || !state.user) return;
     const handler = setTimeout(async () => {
@@ -196,12 +184,13 @@ const App: React.FC = () => {
     setState(prev => ({ 
       ...prev, 
       user, 
-      sessions: cloudSessions || [],
+      sessions: rebalanceAllSessions(cloudSessions || []),
       activeSessionId: cloudSessions && cloudSessions.length > 0 ? cloudSessions[0].id : null,
       isAddingNew: !cloudSessions || cloudSessions.length === 0,
       isLoading: false 
     }));
     setActiveTab('summary');
+    setIsGlobalPlan(true); // Mostra il calendario subito dopo il login per dare senso di continuità
   };
 
   const handleLogout = () => {
@@ -229,14 +218,14 @@ const App: React.FC = () => {
 
   const handleAnalyze = async (config: any) => {
     setState(prev => ({ ...prev, isLoading: true, error: null }));
-    setLoadingStep('Analisi dei materiali...');
+    setLoadingStep('Analisi IA in corso...');
     try {
       const service = new GeminiService();
       if (isUpdatingSession && state.activeSessionId) {
         const activeSess = state.sessions.find(s => s.id === state.activeSessionId)!;
         const baseContent = activeSess.content.substring(0, 30000);
         const newContent = config.content && config.content.trim().length > 20 ? `${baseContent}\n\n[UPDATE]\n${config.content}` : activeSess.content;
-        setLoadingStep('Generazione nuovo piano adattivo...');
+        setLoadingStep('Generazione piano adattivo...');
         const updatedData = await service.analyzeMaterials(newContent, config.faculty, config.course, config.examType, config.depth, config.examDate);
         const updatedSessions = state.sessions.map(s => s.id === state.activeSessionId ? {
           ...s, examDate: config.examDate, examType: config.examType, depth: config.depth,
@@ -245,7 +234,7 @@ const App: React.FC = () => {
         setState(prev => ({ ...prev, sessions: rebalanceAllSessions(updatedSessions), isLoading: false }));
         setIsUpdatingSession(false);
       } else {
-        setLoadingStep('Costruzione Master Plan IA...');
+        setLoadingStep('Ottimizzazione Carico Cognitivo...');
         const data = await service.analyzeMaterials(config.content, config.faculty, config.course, config.examType, config.depth, config.examDate);
         const newSess: ExamSession = {
           id: crypto.randomUUID(), faculty: config.faculty, course: config.course, examType: config.examType,
@@ -265,7 +254,7 @@ const App: React.FC = () => {
       setState(prev => ({ 
         ...prev, 
         isLoading: false, 
-        error: msg === "QUOTA_EXCEEDED" ? "Limite API raggiunto. Riprova tra 60 secondi." : "Errore nell'analisi. Prova con meno testo o file diversi."
+        error: msg === "QUOTA_EXCEEDED" ? "Limite IA raggiunto. Attendi un istante." : "Errore nell'analisi. Riprova con meno testo."
       }));
       setLoadingStep('');
     }
@@ -302,8 +291,8 @@ const App: React.FC = () => {
                   <div className="absolute inset-0 border-[6px] border-blue-600 rounded-full border-t-transparent animate-spin"></div>
                   <ICONS.Brain className="absolute inset-0 m-auto w-10 h-10 text-blue-600" />
                 </div>
-                <h3 className="text-2xl font-black uppercase text-slate-900 italic tracking-tighter mb-2">{loadingStep || 'Sincronizzazione Cloud...'}</h3>
-                <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em]">Aggiornamento in tempo reale attivo</p>
+                <h3 className="text-2xl font-black uppercase text-slate-900 italic tracking-tighter mb-2">{loadingStep || 'Sincronizzazione...'}</h3>
+                <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em]">Crittografia end-to-end attiva</p>
               </div>
             </div>
         ) : state.isAddingNew || isUpdatingSession ? (
@@ -326,7 +315,7 @@ const App: React.FC = () => {
                 <button onClick={() => setIsSidebarOpen(true)} className="lg:hidden p-3 bg-white rounded-2xl shadow-sm text-blue-600"><ICONS.Menu className="w-6 h-6" /></button>
                 <div className="truncate">
                   <h1 className="text-lg font-black text-slate-900 truncate tracking-tight">
-                    {isGlobalPlan ? 'Il Mio Calendario' : (activeSess?.course || 'Dashboard Studente')}
+                    {isGlobalPlan ? 'Pianificazione Cloud' : (activeSess?.course || 'Area Studio')}
                   </h1>
                 </div>
               </div>
@@ -375,10 +364,10 @@ const App: React.FC = () => {
                        <ICONS.Book className="w-16 h-16" />
                      </div>
                      <div className="space-y-2">
-                       <h2 className="text-3xl font-black text-slate-900 tracking-tight">Pronto a spaccare? 🚀</h2>
-                       <p className="text-slate-400 font-medium">Non hai ancora nessun esame pianificato. Inizia caricando i materiali.</p>
+                       <h2 className="text-3xl font-black text-slate-900 tracking-tight">Pronto a iniziare? 🚀</h2>
+                       <p className="text-slate-400 font-medium">I tuoi dati verranno sincronizzati su tutti i tuoi dispositivi.</p>
                      </div>
-                     <button onClick={() => setState(p => ({...p, isAddingNew: true}))} className="px-12 py-5 bg-blue-600 text-white rounded-[2rem] font-black uppercase tracking-widest shadow-2xl shadow-blue-500/30 hover:bg-blue-700 transition-all hover:scale-105 active:scale-95">Aggiungi Primo Esame</button>
+                     <button onClick={() => setState(p => ({...p, isAddingNew: true}))} className="px-12 py-5 bg-blue-600 text-white rounded-[2rem] font-black uppercase tracking-widest shadow-2xl shadow-blue-500/30 hover:bg-blue-700 transition-all hover:scale-105 active:scale-95">Inizia Percorso</button>
                   </div>
                 )}
               </div>
