@@ -42,6 +42,12 @@ export class GeminiService {
     const maxChars = 30000;
     const truncatedText = text.length > maxChars ? text.substring(0, maxChars) : text;
 
+    // Calcola giorni disponibili fino all'esame
+    const today = new Date();
+    const exam = new Date(examDate);
+    const daysAvailable = Math.max(1, Math.floor((exam.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)));
+    const maxModules = Math.min(daysAvailable, 12); // Max 12 moduli totali
+
     const prompt = `
 RUOLO: Senior Instructional Designer Universitario + Tutor Strategico AI.
 CORSO: "${course}" (${faculty}) | DATA ESAME: ${examDate} | TIPO: ${examType} | PROFONDITÀ: ${depth}
@@ -50,42 +56,47 @@ CORSO: "${course}" (${faculty}) | DATA ESAME: ${examDate} | TIPO: ${examType} | 
 ⚠️ REGOLE INVIOLABILI - MASSIMA PRIORITÀ ⚠️
 ═══════════════════════════════════════════════════════════════════
 
-🔴 REGOLA #1: MASSIMO 2 MATERIE AL GIORNO
-- Ogni giorno può avere SOLO 2 materie diverse, MAI 3 o più
-- Meglio mettere più sessioni della STESSA materia che aggiungere una terza materia
+🔴 REGOLA #1: NUMERO MODULI
+- Genera MASSIMO ${maxModules} moduli TOTALI per questa materia
+- Concentrati SOLO sui concetti più importanti e probabili all'esame
+- Meglio pochi moduli ben fatti che tanti superficiali
 
-🔴 REGOLA #2: FORMATO TASK OBBLIGATORIO
+🔴 REGOLA #2: CARICO GIORNALIERO
+- OGNI modulo deve contenere MAX 6h di studio totale (somma di tutti i task)
+- Mai superare 6h per modulo
+- Esempio: 2h teoria + 2h teoria + 1h pratica + 1h pratica = 6h ✅
+- Esempio: 3h + 3h + 2h + 2h = 10h ❌ TROPPO!
+
+🔴 REGOLA #3: FORMATO TASK OBBLIGATORIO
 OGNI task DEVE seguire ESATTAMENTE questo formato:
 "[TIPO] Descrizione attività - Xh"
 
 Dove:
 - TIPO = TEORIA o PRATICA
-- X = numero ore (può essere decimale: 1.5h, 2.5h, ecc.)
-- Il trattino "-" e la "h" sono OBBLIGATORI
+- X = ore (1h, 1.5h, 2h, 2.5h, 3h MAX)
+- Ogni singolo task: MIN 1h, MAX 3h
 
 ✅ ESEMPI CORRETTI:
 "[TEORIA] Studio distribuzione normale - 2h"
 "[PRATICA] Esercizi su media e varianza - 1.5h"
-"[TEORIA] Analisi dei dati categorici - 3h"
+"[TEORIA] Analisi dei dati categorici - 2.5h"
 "[PRATICA] Active recall concetti precedenti - 1h"
 
-❌ ESEMPI SBAGLIATI (NON FARE MAI COSÌ):
-"Active Recall sui moduli precedenti" ❌ (manca [PRATICA] e ore)
-"Focus su lacune" ❌ (manca [PRATICA] e ore)
-"Studio della teoria" ❌ (manca ore specifiche)
+🔴 REGOLA #4: STRUTTURA SESSIONE
+Ogni modulo DEVE avere ESATTAMENTE 4 task:
+- 2 task [TEORIA] (1.5-3h ciascuno)
+- 2 task [PRATICA] (1-2h ciascuno)
 
-🔴 REGOLA #3: STRUTTURA SESSIONE
-Ogni sessione di studio DEVE avere ESATTAMENTE 4 task:
-- 2 task [TEORIA] con ore specificate
-- 2 task [PRATICA] con ore specificate
+TOTALE MODULO: 4-7h MAX
 
-🔴 REGOLA #4: GIORNO D'ESAME
+🔴 REGOLA #5: PRIORITÀ
+- Profondità ${depth}: 
+  - BASIC: argomenti base, 6-8 moduli
+  - MEDIUM: argomenti principali, 8-10 moduli  
+  - ADVANCED: tutti i dettagli, 10-12 moduli
+
+🔴 REGOLA #6: GIORNO D'ESAME
 Il ${examDate} NON deve contenere NESSUNA attività di studio.
-
-🔴 REGOLA #5: CALCOLO ORE
-- Sessioni teoria: 1.5-3h per task
-- Sessioni pratica: 1-2h per task
-- Totale giornaliero ideale: 4-8h
 
 ═══════════════════════════════════════════════════════════════════
 
@@ -94,21 +105,23 @@ ${truncatedText || "Nessun materiale dettagliato - genera piano generico basato 
 
 ═══════════════════════════════════════════════════════════════════
 
-📋 ESEMPIO DI OUTPUT CORRETTO:
+📋 ESEMPIO DI OUTPUT CORRETTO (MODULO DA 6H):
 
 {
   "day": 1,
   "topics": ["Statistica Descrittiva"],
   "tasks": [
     "[TEORIA] Media, moda e mediana - 2h",
-    "[TEORIA] Varianza e deviazione standard - 2.5h",
+    "[TEORIA] Varianza e deviazione standard - 1.5h",
     "[PRATICA] Esercizi calcolo statistiche base - 1.5h",
     "[PRATICA] Active recall definizioni chiave - 1h"
   ],
   "priority": "HIGH"
 }
 
-IMPORTANTE: Se non hai materiali dettagliati, genera comunque un piano standard per ${course} seguendo il curriculum universitario tipico, MA rispettando SEMPRE il formato con ore specificate.
+TOTALE: 6h ✅
+
+IMPORTANTE: Genera SOLO ${maxModules} moduli. Se il materiale è tanto, seleziona gli argomenti PIÙ PROBABILI all'esame.
     `;
 
     return this.callWithRetry(async (ai) => {
@@ -174,17 +187,18 @@ IMPORTANTE: Se non hai materiali dettagliati, genera comunque un piano standard 
 
       const parsed = JSON.parse(response.text || '{}');
       
-      // Post-processing: forza il formato corretto e inizializza completedTasks
+      // Post-processing: limita moduli e forza il formato corretto
       if (parsed.studyPlan) {
-        parsed.studyPlan = parsed.studyPlan.map((day: any) => {
-          // Forza 4 task se ce ne sono meno
+        // LIMITA A MAX MODULI
+        let studyPlan = parsed.studyPlan.slice(0, maxModules);
+        
+        studyPlan = studyPlan.map((day: any) => {
           const tasks = day.tasks || [];
           
-          // Aggiungi ore se mancano (fallback)
-          const processedTasks = tasks.map((task: string) => {
-            // Se il task non ha già il formato corretto, aggiungilo
+          // Processa e valida ogni task
+          let processedTasks = tasks.map((task: string) => {
+            // Se il task non ha il formato corretto, aggiungilo
             if (!task.includes(' - ') || !task.includes('h')) {
-              // Determina se è teoria o pratica
               const isTheory = task.toLowerCase().includes('stud') || 
                               task.toLowerCase().includes('teor') || 
                               task.toLowerCase().includes('analisi') ||
@@ -193,24 +207,52 @@ IMPORTANTE: Se non hai materiali dettagliati, genera comunque un piano standard 
               const type = isTheory ? 'TEORIA' : 'PRATICA';
               const hours = isTheory ? '2h' : '1.5h';
               
-              // Se non ha già [TIPO], aggiungilo
               if (!task.startsWith('[')) {
                 return `[${type}] ${task} - ${hours}`;
               } else {
                 return `${task} - ${hours}`;
               }
             }
+            
+            // Limita le ore di ogni singolo task a MAX 3h
+            const match = task.match(/(\d+(?:\.\d+)?)\s*h/i);
+            if (match && parseFloat(match[1]) > 3) {
+              return task.replace(/(\d+(?:\.\d+)?)\s*h/i, '3h');
+            }
+            
             return task;
           });
           
-          // Assicurati che ci siano almeno 4 task
+          // Assicura 4 task
           while (processedTasks.length < 4) {
             const needsTheory = processedTasks.filter((t: string) => t.includes('[TEORIA]')).length < 2;
             if (needsTheory) {
               processedTasks.push(`[TEORIA] Studio approfondito - 2h`);
             } else {
-              processedTasks.push(`[PRATICA] Esercizi applicativi - 1.5h`);
+              processedTasks.push(`[PRATICA] Esercizi applicativi - 1h`);
             }
+          }
+          
+          // Limita a 4 task se ce ne sono di più
+          processedTasks = processedTasks.slice(0, 4);
+          
+          // Calcola totale ore e ridimensiona se supera 7h
+          let totalHours = processedTasks.reduce((sum: number, task: string) => {
+            const match = task.match(/(\d+(?:\.\d+)?)\s*h/i);
+            return sum + (match ? parseFloat(match[1]) : 2);
+          }, 0);
+          
+          // Se supera 7h, riduci proporzionalmente
+          if (totalHours > 7) {
+            const factor = 6 / totalHours; // Target 6h
+            processedTasks = processedTasks.map((task: string) => {
+              const match = task.match(/(\d+(?:\.\d+)?)\s*h/i);
+              if (match) {
+                const newHours = Math.max(1, Math.round(parseFloat(match[1]) * factor * 2) / 2); // Arrotonda a 0.5
+                return task.replace(/(\d+(?:\.\d+)?)\s*h/i, `${newHours}h`);
+              }
+              return task;
+            });
           }
           
           return {
@@ -222,6 +264,8 @@ IMPORTANTE: Se non hai materiali dettagliati, genera comunque un piano standard 
             assignedDate: null
           };
         });
+        
+        parsed.studyPlan = studyPlan;
       }
 
       return { ...parsed, faculty, course, depth } as StudyMaterialData;

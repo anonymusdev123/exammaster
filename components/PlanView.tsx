@@ -321,22 +321,29 @@ const PlanView: React.FC<PlanViewProps> = ({ sessions, onUpdateSessions, onMoveM
                                     </div>
                                     
                                     <ul className="space-y-2">
-                                      {module.plan.tasks.map((task: string, idx: number) => (
-                                        <li 
-                                          key={idx}
-                                          onClick={() => onToggleTask(block.sessionId, module.plan.uid, idx)}
-                                          className="flex items-start gap-3 p-3 bg-slate-50 rounded-xl text-sm font-medium border border-slate-100 cursor-pointer hover:bg-slate-100 transition-all active:scale-95"
-                                        >
-                                          <div className={`w-5 h-5 rounded-lg border-2 flex items-center justify-center transition-all ${module.plan.completedTasks?.[idx] ? 'bg-emerald-500 border-emerald-500 shadow-lg shadow-emerald-500/20' : 'border-slate-300'} shrink-0 mt-0.5`}>
-                                            {module.plan.completedTasks?.[idx] && (
-                                              <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3 text-white" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>
-                                            )}
-                                          </div>
-                                          <span className={`text-slate-700 ${module.plan.completedTasks?.[idx] ? 'line-through text-slate-400' : ''}`}>
-                                            {task}
-                                          </span>
-                                        </li>
-                                      ))}
+                                      {module.plan.tasks.map((task: string, idx: number) => {
+                                        const isCompleted = module.plan.completedTasks?.[idx] || false;
+                                        return (
+                                          <li 
+                                            key={idx}
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              console.log('Click task:', { sessionId: block.sessionId, uid: module.plan.uid, idx });
+                                              onToggleTask(block.sessionId, module.plan.uid, idx);
+                                            }}
+                                            className="flex items-start gap-3 p-3 bg-slate-50 rounded-xl text-sm font-medium border border-slate-100 cursor-pointer hover:bg-slate-100 transition-all active:scale-95"
+                                          >
+                                            <div className={`w-5 h-5 rounded-lg border-2 flex items-center justify-center transition-all ${isCompleted ? 'bg-emerald-500 border-emerald-500 shadow-lg shadow-emerald-500/20' : 'border-slate-300'} shrink-0 mt-0.5`}>
+                                              {isCompleted && (
+                                                <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3 text-white" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>
+                                              )}
+                                            </div>
+                                            <span className={`text-slate-700 ${isCompleted ? 'line-through text-slate-400' : ''}`}>
+                                              {task}
+                                            </span>
+                                          </li>
+                                        );
+                                      })}
                                     </ul>
                                   </div>
                                 );
