@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Flashcard } from '../types';
 import { ICONS } from '../constants';
@@ -73,59 +72,91 @@ const QuizView: React.FC<QuizViewProps> = ({ flashcards, onRegenerate, isLoading
 
       {flashcards.length > 0 ? (
         <div className="space-y-8">
-          <div className="relative h-96 perspective-1000">
+          {/* CARD CON FLIP FUNZIONANTE */}
+          <div className="relative h-96">
             <div 
               onClick={() => setIsFlipped(!isFlipped)}
-              className={`relative w-full h-full transition-transform duration-500 transform-style-3d cursor-pointer ${isFlipped ? 'rotate-y-180' : ''}`}
+              className="relative w-full h-full cursor-pointer"
+              style={{ perspective: '1000px' }}
             >
-              <div className="absolute inset-0 bg-white border-2 border-slate-100 rounded-[2.5rem] shadow-sm backface-hidden flex flex-col items-center justify-center p-10 text-center">
-                 <span className="text-[10px] font-black text-blue-500 uppercase tracking-widest mb-6">CONCETTO / DOMANDA</span>
-                 <p className="text-xl font-bold text-slate-900 leading-relaxed whitespace-pre-wrap">{currentCard.question}</p>
-                 <p className="absolute bottom-8 text-[10px] font-black text-slate-300 uppercase tracking-widest">Clicca per la risposta didattica</p>
-              </div>
-
-              <div className="absolute inset-0 bg-blue-600 rounded-[2.5rem] shadow-xl backface-hidden rotate-y-180 flex flex-col items-center justify-center p-10 text-center text-white border-2 border-blue-500">
-                 <span className="text-[10px] font-black text-blue-200 uppercase tracking-widest mb-6">RISPOSTA IA SUI CONTENUTI</span>
-                 <p className="text-xl font-bold leading-relaxed whitespace-pre-wrap">{currentCard.answer}</p>
+              <div 
+                className="relative w-full h-full transition-transform duration-500"
+                style={{ 
+                  transformStyle: 'preserve-3d',
+                  transform: isFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)'
+                }}
+              >
+                {/* FRONTE */}
+                <div 
+                  className="absolute inset-0 bg-white border-2 border-slate-100 rounded-[2.5rem] shadow-xl flex flex-col items-center justify-center p-10 text-center"
+                  style={{ backfaceVisibility: 'hidden' }}
+                >
+                  <span className="text-[10px] font-black text-blue-500 uppercase tracking-widest mb-6">CONCETTO / DOMANDA</span>
+                  <p className="text-2xl font-bold text-slate-900 leading-relaxed">{currentCard.question}</p>
+                  <p className="absolute bottom-8 text-[10px] font-black text-slate-300 uppercase tracking-widest">Clicca per la risposta</p>
+                </div>
+                
+                {/* RETRO */}
+                <div 
+                  className="absolute inset-0 bg-blue-600 rounded-[2.5rem] shadow-xl flex flex-col items-center justify-center p-10 text-center text-white border-2 border-blue-500"
+                  style={{ 
+                    backfaceVisibility: 'hidden',
+                    transform: 'rotateY(180deg)'
+                  }}
+                >
+                  <span className="text-[10px] font-black text-blue-200 uppercase tracking-widest mb-6">RISPOSTA AI</span>
+                  <p className="text-xl font-bold leading-relaxed">{currentCard.answer}</p>
+                </div>
               </div>
             </div>
           </div>
 
+          {/* CONTROLLI */}
           <div className="flex flex-col items-center gap-6">
             <div className="flex items-center gap-4">
-              <button onClick={handlePrev} className="p-4 bg-white border-2 border-slate-100 rounded-2xl hover:bg-slate-50 transition-all">
-                <ICONS.ArrowRight className="w-5 h-5 rotate-180 text-slate-400" />
+              <button 
+                onClick={handlePrev} 
+                className="p-4 bg-white border-2 border-slate-100 rounded-2xl hover:bg-slate-50 transition-all shadow-sm"
+              >
+                <ICONS.ArrowRight className="w-5 h-5 rotate-180 text-slate-600" />
               </button>
-              <div className="px-6 py-2 bg-slate-100 text-slate-600 rounded-full font-black text-[10px] tracking-widest">
+              
+              <div className="px-8 py-3 bg-slate-100 text-slate-700 rounded-full font-black text-sm">
                 {currentIndex + 1} / {flashcards.length}
               </div>
-              <button onClick={handleNext} className="p-4 bg-white border-2 border-slate-100 rounded-2xl hover:bg-slate-50 transition-all">
-                <ICONS.ArrowRight className="w-5 h-5 text-slate-400" />
+              
+              <button 
+                onClick={handleNext} 
+                className="p-4 bg-white border-2 border-slate-100 rounded-2xl hover:bg-slate-50 transition-all shadow-sm"
+              >
+                <ICONS.ArrowRight className="w-5 h-5 text-slate-600" />
               </button>
             </div>
 
             <button 
               onClick={handleExplain}
               disabled={isExplaining}
-              className="px-8 py-3 bg-blue-50 text-blue-600 rounded-full text-[10px] font-black uppercase tracking-widest border border-blue-100 hover:bg-blue-100 transition-all"
+              className="px-8 py-3 bg-blue-600 text-white rounded-2xl text-sm font-black uppercase tracking-widest hover:bg-blue-700 transition-all disabled:opacity-50 shadow-lg shadow-blue-500/20"
             >
-              {isExplaining ? 'Analisi accademica...' : 'Dettaglio del Concetto'}
+              {isExplaining ? 'Analisi in corso...' : 'Spiega Concetto'}
             </button>
           </div>
 
+          {/* SPIEGAZIONE */}
           {explanation && (
-            <div className="bg-blue-600 text-white rounded-[2rem] p-10 animate-fadeIn shadow-xl shadow-blue-500/10 border-2 border-blue-400">
-              <h4 className="text-[10px] font-black uppercase tracking-widest mb-4 flex items-center gap-2">
+            <div className="bg-blue-600 text-white rounded-[2.5rem] p-10 animate-fadeIn shadow-xl border-2 border-blue-500">
+              <h4 className="text-[10px] font-black uppercase tracking-widest mb-4 flex items-center gap-2 text-blue-200">
                 <ICONS.Brain className="w-4 h-4" />
-                Spiegazione Basata sugli Appunti
+                Spiegazione Dettagliata
               </h4>
-              <p className="text-sm font-medium leading-relaxed whitespace-pre-wrap">{explanation}</p>
+              <p className="text-base font-medium leading-relaxed whitespace-pre-wrap">{explanation}</p>
             </div>
           )}
         </div>
       ) : (
         <div className="text-center p-20 bg-slate-50 rounded-[3rem] border-2 border-dashed border-slate-200">
-          <p className="text-slate-400 font-bold uppercase tracking-widest">Nessuna flashcard disponibile.</p>
+          <ICONS.Brain className="w-16 h-16 mx-auto mb-4 text-slate-300" />
+          <p className="text-slate-400 font-bold text-sm uppercase tracking-widest">Nessuna flashcard disponibile</p>
         </div>
       )}
     </div>

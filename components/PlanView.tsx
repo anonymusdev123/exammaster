@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { ExamSession } from '../types';
 import { ICONS } from '../constants';
 
@@ -22,7 +22,6 @@ const SESSION_COLORS = [
 const PlanView: React.FC<PlanViewProps> = ({ sessions, onUpdateSessions, onMoveModule, onRebalance, onToggleTask }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDayInfo, setSelectedDayInfo] = useState<{ date: string, courseBlocks: any[] } | null>(null);
-  const [refreshKey, setRefreshKey] = useState(0); // Per forzare aggiornamento completo
 
   const getLocalDateStr = (d: Date) => {
     const year = d.getFullYear();
@@ -31,14 +30,9 @@ const PlanView: React.FC<PlanViewProps> = ({ sessions, onUpdateSessions, onMoveM
     return `${year}-${month}-${day}`;
   };
 
-  // Aggiungi effect per refresh quando sessions cambia
-  React.useEffect(() => {
-    setRefreshKey(k => k + 1);
-  }, [sessions]);
-
   const todayStr = getLocalDateStr(new Date());
 
-  // Raggruppa i task per MATERIA (non più singoli task)
+  // Ricalcola courseBlocks quando sessions cambia
   const eventsByDate = useMemo(() => {
     const map: Record<string, { courseBlocks: Map<string, any>, exams: any[], dayOffs: string[] }> = {};
     
@@ -66,7 +60,6 @@ const PlanView: React.FC<PlanViewProps> = ({ sessions, onUpdateSessions, onMoveM
         
         const courseKey = session.course;
         
-        // Raggruppa tutti i moduli della stessa materia nello stesso giorno
         if (!map[dateStr].courseBlocks.has(courseKey)) {
           map[dateStr].courseBlocks.set(courseKey, {
             sessionId: session.id,
@@ -79,10 +72,9 @@ const PlanView: React.FC<PlanViewProps> = ({ sessions, onUpdateSessions, onMoveM
         const isCompleted = dayPlan.completedTasks?.every(t => t) && (dayPlan.completedTasks?.length || 0) > 0;
         const isSim = dayPlan.topics[0] === "SIMULAZIONE";
         
-        // Calcola ore totali dai task - se non ci sono ore esplicite, stima 2h per task
         const totalHours = dayPlan.tasks.reduce((sum, task) => {
           const match = task.match(/(\d+(?:\.\d+)?)\s*h/i);
-          return sum + (match ? parseFloat(match[1]) : 2); // Default 2h per task
+          return sum + (match ? parseFloat(match[1]) : 2);
         }, 0);
         
         map[dateStr].courseBlocks.get(courseKey).modules.push({
@@ -95,7 +87,6 @@ const PlanView: React.FC<PlanViewProps> = ({ sessions, onUpdateSessions, onMoveM
       });
     });
     
-    // Converti Map in Array per rendering
     const result: Record<string, { courseBlocks: any[], exams: any[], dayOffs: string[] }> = {};
     Object.keys(map).forEach(date => {
       result[date] = {
@@ -107,6 +98,14 @@ const PlanView: React.FC<PlanViewProps> = ({ sessions, onUpdateSessions, onMoveM
     
     return result;
   }, [sessions]);
+
+  // ⚡ AGGIORNA IL POPUP QUANDO SESSIONS CAMBIA
+  useEffect(() => {
+    if (selectedDayInfo) {
+      const data = eventsByDate[selectedDayInfo.date] || { courseBlocks: [], exams: [], dayOffs: [] };
+      setSelectedDayInfo({ date: selectedDayInfo.date, courseBlocks: data.courseBlocks });
+    }
+  }, [sessions, eventsByDate]);
 
   const calendarDays = useMemo(() => {
     const year = currentDate.getFullYear();
@@ -208,7 +207,6 @@ const PlanView: React.FC<PlanViewProps> = ({ sessions, onUpdateSessions, onMoveM
             const isExamDay = data.exams.length > 0;
             const isDayOff = data.dayOffs.length > 0;
             
-            // VISUALIZZA SOLO MAX 2 BLOCCHI (uno per materia)
             const visibleBlocks = data.courseBlocks.slice(0, 2);
             const hasMoreBlocks = data.courseBlocks.length > 2;
             
@@ -234,7 +232,6 @@ const PlanView: React.FC<PlanViewProps> = ({ sessions, onUpdateSessions, onMoveM
                     </div>
                   )}
                   
-                  {/* MOSTRA SOLO 2 BLOCCHI MASSIMO */}
                   {!isDayOff && visibleBlocks.map((block) => {
                     const totalHours = block.modules.reduce((sum: number, m: any) => sum + m.hours, 0);
                     const hasSim = block.modules.some((m: any) => m.isSim);
@@ -251,7 +248,6 @@ const PlanView: React.FC<PlanViewProps> = ({ sessions, onUpdateSessions, onMoveM
                     );
                   })}
                   
-                  {/* Indicatore se ci sono più di 2 materie */}
                   {hasMoreBlocks && (
                     <div className="bg-slate-200 text-slate-600 text-[7px] font-black px-1.5 py-1 rounded text-center">
                       +{data.courseBlocks.length - 2} altre
@@ -310,7 +306,6 @@ const PlanView: React.FC<PlanViewProps> = ({ sessions, onUpdateSessions, onMoveM
                               </span>
                             </div>
                             
-                            {/* Lista di tutti i moduli di questa materia */}
                             <div className="space-y-4">
                               {block.modules.map((module: any) => {
                                 const isSim = module.isSim;
@@ -332,9 +327,8 @@ const PlanView: React.FC<PlanViewProps> = ({ sessions, onUpdateSessions, onMoveM
                                         return (
                                           <li 
                                             key={idx}
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              console.log('🔘 Click task:', { sessionId: block.sessionId, uid: module.plan.uid, idx, current: isCompleted });
+                                            onClick={() => {
+                                              console.log('🔘 Click task:', { sessionId: block.sessionId, uid: module.plan.uid, idx });
                                               onToggleTask(block.sessionId, module.plan.uid, idx);
                                             }}
                                             className="flex items-start gap-3 p-3 bg-slate-50 rounded-xl text-sm font-medium border border-slate-100 cursor-pointer hover:bg-slate-100 transition-all active:scale-95"
