@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { ExamSession } from '../types';
 import { ICONS } from '../constants';
@@ -22,7 +21,7 @@ const SESSION_COLORS = [
 
 const PlanView: React.FC<PlanViewProps> = ({ sessions, onUpdateSessions, onMoveModule, onRebalance, onToggleTask }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [selectedDayInfo, setSelectedDayInfo] = useState<{ date: string, tasks: any[], exams: any[] } | null>(null);
+  const [selectedDayInfo, setSelectedDayInfo] = useState<{ date: string, courseBlocks: any[] } | null>(null);
 
   const getLocalDateStr = (d: Date) => {
     const year = d.getFullYear();
@@ -33,20 +32,21 @@ const PlanView: React.FC<PlanViewProps> = ({ sessions, onUpdateSessions, onMoveM
 
   const todayStr = getLocalDateStr(new Date());
 
+  // Raggruppa i task per MATERIA (non più singoli task)
   const eventsByDate = useMemo(() => {
-    const map: Record<string, { tasks: any[], exams: any[], dayOffs: string[] }> = {};
+    const map: Record<string, { courseBlocks: Map<string, any>, exams: any[], dayOffs: string[] }> = {};
     
     sessions.forEach(session => {
       const color = SESSION_COLORS[session.colorIndex || 0];
       const examDateStr = session.examDate;
 
-      if (!map[examDateStr]) map[examDateStr] = { tasks: [], exams: [], dayOffs: [] };
+      if (!map[examDateStr]) map[examDateStr] = { courseBlocks: new Map(), exams: [], dayOffs: [] };
       map[examDateStr].exams.push({ course: session.course, color });
 
       if (session.isPassed) return;
 
       session.dayOffs?.forEach(dStr => {
-        if (!map[dStr]) map[dStr] = { tasks: [], exams: [], dayOffs: [] };
+        if (!map[dStr]) map[dStr] = { courseBlocks: new Map(), exams: [], dayOffs: [] };
         if (!map[dStr].dayOffs.includes(session.course)) {
           map[dStr].dayOffs.push(session.course);
         }
@@ -56,20 +56,50 @@ const PlanView: React.FC<PlanViewProps> = ({ sessions, onUpdateSessions, onMoveM
         const dateStr = dayPlan.assignedDate;
         if (!dateStr) return;
         
-        if (!map[dateStr]) map[dateStr] = { tasks: [], exams: [], dayOffs: [] };
-        const isCompleted = dayPlan.completedTasks?.every(t => t) && (dayPlan.completedTasks?.length || 0) > 0;
+        if (!map[dateStr]) map[dateStr] = { courseBlocks: new Map(), exams: [], dayOffs: [] };
         
-        map[dateStr].tasks.push({ 
-          sessionId: session.id, 
-          course: session.course, 
-          color, 
-          plan: dayPlan, 
+        const courseKey = session.course;
+        
+        // Raggruppa tutti i moduli della stessa materia nello stesso giorno
+        if (!map[dateStr].courseBlocks.has(courseKey)) {
+          map[dateStr].courseBlocks.set(courseKey, {
+            sessionId: session.id,
+            course: session.course,
+            color,
+            modules: []
+          });
+        }
+        
+        const isCompleted = dayPlan.completedTasks?.every(t => t) && (dayPlan.completedTasks?.length || 0) > 0;
+        const isSim = dayPlan.topics[0] === "SIMULAZIONE";
+        
+        // Calcola ore totali dai task
+        const totalHours = dayPlan.tasks.reduce((sum, task) => {
+          const match = task.match(/(\d+(?:\.\d+)?)\s*h/i);
+          return sum + (match ? parseFloat(match[1]) : 0);
+        }, 0);
+        
+        map[dateStr].courseBlocks.get(courseKey).modules.push({
+          plan: dayPlan,
           isCompleted,
-          uniqueKey: dayPlan.uid
+          isSim,
+          uniqueKey: dayPlan.uid,
+          hours: totalHours
         });
       });
     });
-    return map;
+    
+    // Converti Map in Array per rendering
+    const result: Record<string, { courseBlocks: any[], exams: any[], dayOffs: string[] }> = {};
+    Object.keys(map).forEach(date => {
+      result[date] = {
+        courseBlocks: Array.from(map[date].courseBlocks.values()),
+        exams: map[date].exams,
+        dayOffs: map[date].dayOffs
+      };
+    });
+    
+    return result;
   }, [sessions]);
 
   const calendarDays = useMemo(() => {
@@ -168,14 +198,18 @@ const PlanView: React.FC<PlanViewProps> = ({ sessions, onUpdateSessions, onMoveM
           {calendarDays.map((day, idx) => {
             const dateStr = getLocalDateStr(day.date);
             const isToday = dateStr === todayStr;
-            const data = eventsByDate[dateStr] || { tasks: [], exams: [], dayOffs: [] };
+            const data = eventsByDate[dateStr] || { courseBlocks: [], exams: [], dayOffs: [] };
             const isExamDay = data.exams.length > 0;
             const isDayOff = data.dayOffs.length > 0;
+            
+            // VISUALIZZA SOLO MAX 2 BLOCCHI (uno per materia)
+            const visibleBlocks = data.courseBlocks.slice(0, 2);
+            const hasMoreBlocks = data.courseBlocks.length > 2;
             
             return (
               <div 
                 key={idx}
-                onClick={() => day.isCurrentMonth && setSelectedDayInfo({ date: dateStr, tasks: data.tasks, exams: data.exams })}
+                onClick={() => day.isCurrentMonth && setSelectedDayInfo({ date: dateStr, courseBlocks: data.courseBlocks })}
                 onDragOver={onDragOver}
                 onDrop={(e) => onDrop(e, dateStr)}
                 className={`border-r border-b border-slate-100 p-1 flex flex-col gap-1 transition-all relative group/cell ${day.isCurrentMonth ? 'bg-white' : 'bg-slate-50/30'} ${isExamDay ? 'bg-emerald-50/30' : ''} ${isDayOff ? 'bg-red-50/40' : ''} ${day.isCurrentMonth ? 'hover:bg-blue-50/50 cursor-pointer' : ''}`}
@@ -184,29 +218,39 @@ const PlanView: React.FC<PlanViewProps> = ({ sessions, onUpdateSessions, onMoveM
                   {day.date.getDate()}
                 </div>
                 
-                <div className="flex-1 overflow-y-auto space-y-0.5 scrollbar-hide">
+                <div className="flex-1 overflow-y-auto space-y-1 scrollbar-hide">
                   {isExamDay && data.exams.map((ex, i) => (
                     <div key={i} className="bg-emerald-600 text-white text-[8px] font-black px-1.5 py-1 rounded truncate uppercase shadow-sm border border-emerald-700">ESAME: {ex.course}</div>
                   ))}
                   {isDayOff && (
                     <div className="bg-red-100 text-red-600 text-[8px] font-black px-1.5 py-1 rounded truncate uppercase flex items-center gap-1">
-                       RIPOSO
+                      RIPOSO
                     </div>
                   )}
-                  {!isDayOff && data.tasks.map((task) => {
-                    const isSim = task.plan.topics[0] === "SIMULAZIONE";
+                  
+                  {/* MOSTRA SOLO 2 BLOCCHI MASSIMO */}
+                  {!isDayOff && visibleBlocks.map((block) => {
+                    const totalHours = block.modules.reduce((sum: number, m: any) => sum + m.hours, 0);
+                    const hasSim = block.modules.some((m: any) => m.isSim);
+                    const allCompleted = block.modules.every((m: any) => m.isCompleted);
+                    
                     return (
                       <div 
-                        key={task.uniqueKey} 
-                        draggable={!task.isCompleted}
-                        onDragStart={(e) => onDragStart(e, task.sessionId, task.plan.uid)}
-                        onDragEnd={onDragEnd}
-                        className={`${task.color.bg} ${task.color.text} text-[8px] font-bold px-1.5 py-0.5 rounded truncate uppercase shadow-sm transition-all hover:scale-105 active:scale-95 cursor-move ${task.isCompleted ? 'opacity-30 line-through' : ''} ${isSim ? "ring-2 ring-white ring-offset-1 ring-offset-emerald-500" : ""} ${task.plan.isManuallyPlaced ? "border-l-4 border-white" : ""}`}
+                        key={block.course}
+                        className={`${block.color.bg} ${block.color.text} text-[8px] font-bold px-1.5 py-1 rounded shadow-sm transition-all hover:scale-105 cursor-pointer ${allCompleted ? 'opacity-40 line-through' : ''} ${hasSim ? "ring-2 ring-white ring-offset-1 ring-offset-emerald-500" : ""}`}
                       >
-                        {isSim ? `🔥 SIM: ${task.course}` : task.course}
+                        <div className="truncate uppercase">{hasSim ? `🔥 ${block.course}` : block.course}</div>
+                        <div className="text-[7px] opacity-80 mt-0.5">{totalHours > 0 ? `${totalHours.toFixed(1)}h` : `${block.modules.length} moduli`}</div>
                       </div>
                     );
                   })}
+                  
+                  {/* Indicatore se ci sono più di 2 materie */}
+                  {hasMoreBlocks && (
+                    <div className="bg-slate-200 text-slate-600 text-[7px] font-black px-1.5 py-1 rounded text-center">
+                      +{data.courseBlocks.length - 2} altre
+                    </div>
+                  )}
                 </div>
               </div>
             );
@@ -215,7 +259,7 @@ const PlanView: React.FC<PlanViewProps> = ({ sessions, onUpdateSessions, onMoveM
 
         {selectedDayInfo && (
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xl z-[60] p-6 flex items-center justify-center animate-fadeIn" onClick={() => setSelectedDayInfo(null)}>
-            <div className="bg-white w-full max-w-2xl rounded-[3rem] shadow-2xl p-10 relative overflow-hidden flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
+            <div className="bg-white w-full max-w-3xl rounded-[3rem] shadow-2xl p-10 relative overflow-hidden flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
               <div className="absolute top-8 right-24">
                 <button 
                   onClick={() => handleGlobalDayOffToggle(selectedDayInfo.date)}
@@ -229,69 +273,83 @@ const PlanView: React.FC<PlanViewProps> = ({ sessions, onUpdateSessions, onMoveM
               
               <div className="mb-8">
                 <h3 className="text-3xl font-black capitalize tracking-tight text-slate-900">{new Date(selectedDayInfo.date).toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' })}</h3>
+                <p className="text-slate-400 text-sm font-medium mt-2">
+                  {selectedDayInfo.courseBlocks.length} {selectedDayInfo.courseBlocks.length === 1 ? 'materia' : 'materie'} da studiare
+                </p>
               </div>
               
               <div className="flex-1 overflow-y-auto space-y-6 pr-2 custom-scrollbar">
                 {isSelectedDayOff ? (
                   <div className="flex-1 flex flex-col items-center justify-center py-20 bg-red-50 rounded-[3rem] border-2 border-dashed border-red-200 text-center space-y-4">
                     <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center text-red-500">
-                       <svg xmlns="http://www.w3.org/2000/svg" className="w-10 h-10" viewBox="0 0 20 20" fill="currentColor"><path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z" /></svg>
+                      <svg xmlns="http://www.w3.org/2000/svg" className="w-10 h-10" viewBox="0 0 20 20" fill="currentColor"><path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z" /></svg>
                     </div>
                     <h4 className="text-xl font-black text-red-700 uppercase tracking-tighter">Oggi ricarichiamo le pile! 🌙</h4>
-                    <p className="text-sm font-medium text-red-500 max-w-xs">Tutto lo studio è stato spalmato sui prossimi giorni disponibili utilizzando la formula di priorità float.</p>
+                    <p className="text-sm font-medium text-red-500 max-w-xs">Tutto lo studio è stato spalmato sui prossimi giorni disponibili.</p>
                   </div>
                 ) : (
                   <>
-                    {selectedDayInfo.exams.length > 0 && (
-                      <div className="bg-emerald-600 p-8 rounded-[2.5rem] text-white shadow-xl relative overflow-hidden mb-6">
-                        <h4 className="text-[10px] font-black uppercase tracking-widest mb-4 opacity-80">FOCUS: GIORNO D'ESAME</h4>
-                        <div className="space-y-2">
-                          {selectedDayInfo.exams.map((ex, i) => (
-                            <p key={i} className="text-3xl font-black uppercase tracking-tighter">ESAME: {ex.course}</p>
-                          ))}
-                        </div>
-                        <p className="mt-4 text-[11px] font-bold opacity-70 italic">Nessuna sessione di studio aggiuntiva programmata per oggi.</p>
-                      </div>
-                    )}
-                    
-                    <div className="space-y-4">
-                      {selectedDayInfo.tasks.length > 0 ? (
-                        selectedDayInfo.tasks.map((t) => {
-                          const isSim = t.plan.topics[0] === "SIMULAZIONE";
-                          return (
-                            <div key={t.uniqueKey} className={`${t.color.light} p-8 rounded-[2.5rem] border-2 ${t.color.border.replace('bg-', 'border-').replace('600', '200')} shadow-sm`}>
-                              <div className="flex items-center justify-between mb-6">
-                                <span className={`${t.color.bg} ${t.color.text} px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest shadow-md`}>
-                                  {isSim ? `🔥 SIMULAZIONE: ${t.course}` : t.course}
-                                  {t.plan.isManuallyPlaced && " (Bloccato)"}
-                                </span>
-                                <span className="text-[10px] font-black text-slate-400 uppercase">Modulo {t.plan.day > 50000 ? 'Extra' : t.plan.day}</span>
-                              </div>
-                              <ul className="space-y-3">
-                                {t.plan.tasks.map((tk: string, j: number) => (
-                                  <li 
-                                    key={j} 
-                                    onClick={() => onToggleTask(t.sessionId, t.plan.uid, j)}
-                                    className="flex items-start gap-4 p-4 bg-white rounded-2xl text-sm font-bold border border-slate-100 shadow-sm text-slate-700 cursor-pointer hover:bg-slate-50 transition-all active:scale-95"
-                                  >
-                                    <div className={`w-5 h-5 rounded-lg border-2 flex items-center justify-center transition-all ${t.plan.completedTasks?.[j] ? 'bg-emerald-500 border-emerald-500 shadow-lg shadow-emerald-500/20' : 'border-slate-200'} shrink-0 mt-0.5`}>
-                                      {t.plan.completedTasks?.[j] && (
-                                        <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3 text-white" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>
+                    {selectedDayInfo.courseBlocks.length > 0 ? (
+                      selectedDayInfo.courseBlocks.map((block) => {
+                        const totalHours = block.modules.reduce((sum: number, m: any) => sum + m.hours, 0);
+                        
+                        return (
+                          <div key={block.course} className={`${block.color.light} p-8 rounded-[2.5rem] border-2 ${block.color.border.replace('bg-', 'border-').replace('600', '200')} shadow-sm`}>
+                            <div className="flex items-center justify-between mb-6">
+                              <span className={`${block.color.bg} ${block.color.text} px-4 py-2 rounded-full text-sm font-black uppercase tracking-widest shadow-md`}>
+                                {block.course}
+                              </span>
+                              <span className="text-sm font-black text-slate-600">
+                                {totalHours > 0 ? `⏱️ ${totalHours.toFixed(1)}h totali` : `${block.modules.length} moduli`}
+                              </span>
+                            </div>
+                            
+                            {/* Lista di tutti i moduli di questa materia */}
+                            <div className="space-y-4">
+                              {block.modules.map((module: any) => {
+                                const isSim = module.isSim;
+                                return (
+                                  <div key={module.uniqueKey} className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
+                                    <div className="flex items-center justify-between mb-4">
+                                      <span className="text-xs font-black text-slate-500 uppercase">
+                                        {isSim ? '🔥 SIMULAZIONE' : `Modulo ${module.plan.day}`}
+                                        {module.plan.isManuallyPlaced && ' • Bloccato'}
+                                      </span>
+                                      {module.hours > 0 && (
+                                        <span className="text-xs font-bold text-slate-400">~{module.hours.toFixed(1)}h</span>
                                       )}
                                     </div>
-                                    <span className={t.plan.completedTasks?.[j] ? 'line-through text-slate-400 transition-all' : ''}>{tk}</span>
-                                  </li>
-                                ))}
-                              </ul>
+                                    
+                                    <ul className="space-y-2">
+                                      {module.plan.tasks.map((task: string, idx: number) => (
+                                        <li 
+                                          key={idx}
+                                          onClick={() => onToggleTask(block.sessionId, module.plan.uid, idx)}
+                                          className="flex items-start gap-3 p-3 bg-slate-50 rounded-xl text-sm font-medium border border-slate-100 cursor-pointer hover:bg-slate-100 transition-all active:scale-95"
+                                        >
+                                          <div className={`w-5 h-5 rounded-lg border-2 flex items-center justify-center transition-all ${module.plan.completedTasks?.[idx] ? 'bg-emerald-500 border-emerald-500 shadow-lg shadow-emerald-500/20' : 'border-slate-300'} shrink-0 mt-0.5`}>
+                                            {module.plan.completedTasks?.[idx] && (
+                                              <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3 text-white" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>
+                                            )}
+                                          </div>
+                                          <span className={`text-slate-700 ${module.plan.completedTasks?.[idx] ? 'line-through text-slate-400' : ''}`}>
+                                            {task}
+                                          </span>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                );
+                              })}
                             </div>
-                          );
-                        })
-                      ) : !selectedDayInfo.exams.length && (
-                        <div className="text-center py-20 bg-slate-50 rounded-[3rem] border border-dashed border-slate-200">
-                          <p className="text-slate-400 font-black text-[10px] uppercase tracking-widest">Nessun impegno pianificato</p>
-                        </div>
-                      )}
-                    </div>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div className="text-center py-20 bg-slate-50 rounded-[3rem] border border-dashed border-slate-200">
+                        <p className="text-slate-400 font-black text-[10px] uppercase tracking-widest">Nessun impegno pianificato</p>
+                      </div>
+                    )}
                   </>
                 )}
               </div>
