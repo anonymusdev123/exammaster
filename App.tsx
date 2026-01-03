@@ -128,13 +128,16 @@ const App: React.FC = () => {
   }, [rebalanceAllSessions]);
 
   const handleToggleTask = useCallback((sessionId: string, moduleUid: string, taskIdx: number) => {
+    console.log('🔄 Toggle Task:', { sessionId, moduleUid, taskIdx });
     setState(prev => {
       const updated = prev.sessions.map(s => {
         if (s.id !== sessionId) return s;
         const plan = s.data.studyPlan.map(m => {
           if (m.uid !== moduleUid) return m;
-          const newCompleted = [...(m.completedTasks || Array(m.tasks.length).fill(false))];
+          const currentCompleted = m.completedTasks || Array(m.tasks.length).fill(false);
+          const newCompleted = [...currentCompleted];
           newCompleted[taskIdx] = !newCompleted[taskIdx];
+          console.log('✅ Task toggled:', { before: currentCompleted[taskIdx], after: newCompleted[taskIdx] });
           return { ...m, completedTasks: newCompleted };
         });
         return { ...s, data: { ...s.data, studyPlan: plan } };

@@ -43,55 +43,72 @@ export class GeminiService {
     const truncatedText = text.length > maxChars ? text.substring(0, maxChars) : text;
 
     const prompt = `
-RUOLO: Senior Instructional Designer Universitario + Tutor Strategico.
-CORSO: "${course}" (${faculty}). DATA ESAME: ${examDate}.
+RUOLO: Senior Instructional Designer Universitario + Tutor Strategico AI.
+CORSO: "${course}" (${faculty}) | DATA ESAME: ${examDate} | TIPO: ${examType} | PROFONDITÀ: ${depth}
 
-**SISTEMA DI PIANIFICAZIONE STUDIO - REGOLE INVIOLABILI**
+═══════════════════════════════════════════════════════════════════
+⚠️ REGOLE INVIOLABILI - MASSIMA PRIORITÀ ⚠️
+═══════════════════════════════════════════════════════════════════
 
-REGOLA #1 (MASSIMA PRIORITÀ):
-- Ogni giorno può contenere MASSIMO 2 MATERIE DIVERSE
-- NON 3, NON 4, NON 5 - SOLO 2 MATERIE
-- Se un giorno ha già 2 materie, NON aggiungerne altre
-- È PREFERIBILE mettere più sessioni della STESSA materia nello stesso giorno
+🔴 REGOLA #1: MASSIMO 2 MATERIE AL GIORNO
+- Ogni giorno può avere SOLO 2 materie diverse, MAI 3 o più
+- Meglio mettere più sessioni della STESSA materia che aggiungere una terza materia
 
-REGOLA #2 (GIORNO D'ESAME):
-- Nel giorno ${examDate} NON deve essere programmata NESSUNA attività di studio
-- La mente deve essere libera e riposata
+🔴 REGOLA #2: FORMATO TASK OBBLIGATORIO
+OGNI task DEVE seguire ESATTAMENTE questo formato:
+"[TIPO] Descrizione attività - Xh"
 
-REGOLA #3 (STRUTTURA TASK):
-Ogni sessione di studio deve contenere ESATTAMENTE 4 task:
-- 2 task [TEORIA]: [nome argomento] - Xh (specifica ore)
-- 2 task [PRATICA]: [esercizi/active recall] - Xh (specifica ore)
+Dove:
+- TIPO = TEORIA o PRATICA
+- X = numero ore (può essere decimale: 1.5h, 2.5h, ecc.)
+- Il trattino "-" e la "h" sono OBBLIGATORI
 
-REGOLA #4 (STIMA ORE OBBLIGATORIA):
-- OGNI task DEVE avere una stima ore esplicita nel formato "- Xh" o "- X.Xh"
-- Esempi corretti:
-  * "[TEORIA] Introduzione alla statistica - 2h"
-  * "[PRATICA] Esercizi sulla media - 1.5h"
-  * "[TEORIA] Distribuzione normale - 3h"
-- NON scrivere task senza ore: è OBBLIGATORIO
+✅ ESEMPI CORRETTI:
+"[TEORIA] Studio distribuzione normale - 2h"
+"[PRATICA] Esercizi su media e varianza - 1.5h"
+"[TEORIA] Analisi dei dati categorici - 3h"
+"[PRATICA] Active recall concetti precedenti - 1h"
 
-ESEMPIO DI GIORNO CORRETTO:
+❌ ESEMPI SBAGLIATI (NON FARE MAI COSÌ):
+"Active Recall sui moduli precedenti" ❌ (manca [PRATICA] e ore)
+"Focus su lacune" ❌ (manca [PRATICA] e ore)
+"Studio della teoria" ❌ (manca ore specifiche)
+
+🔴 REGOLA #3: STRUTTURA SESSIONE
+Ogni sessione di studio DEVE avere ESATTAMENTE 4 task:
+- 2 task [TEORIA] con ore specificate
+- 2 task [PRATICA] con ore specificate
+
+🔴 REGOLA #4: GIORNO D'ESAME
+Il ${examDate} NON deve contenere NESSUNA attività di studio.
+
+🔴 REGOLA #5: CALCOLO ORE
+- Sessioni teoria: 1.5-3h per task
+- Sessioni pratica: 1-2h per task
+- Totale giornaliero ideale: 4-8h
+
+═══════════════════════════════════════════════════════════════════
+
+📚 MATERIALI FORNITI:
+${truncatedText || "Nessun materiale dettagliato - genera piano generico basato su curriculum standard di " + course}
+
+═══════════════════════════════════════════════════════════════════
+
+📋 ESEMPIO DI OUTPUT CORRETTO:
+
 {
   "day": 1,
   "topics": ["Statistica Descrittiva"],
   "tasks": [
-    "[TEORIA] Media, moda, mediana - 2h",
-    "[TEORIA] Varianza e deviazione standard - 1.5h",
-    "[PRATICA] Esercizi su media e varianza - 2h",
-    "[PRATICA] Active recall sui concetti base - 1h"
+    "[TEORIA] Media, moda e mediana - 2h",
+    "[TEORIA] Varianza e deviazione standard - 2.5h",
+    "[PRATICA] Esercizi calcolo statistiche base - 1.5h",
+    "[PRATICA] Active recall definizioni chiave - 1h"
   ],
   "priority": "HIGH"
 }
 
-PROCESSO DI PIANIFICAZIONE:
-1. Analizza il materiale e dividi in moduli logici
-2. Per ogni modulo, crea 4 task (2 teoria + 2 pratica) con ore specificate
-3. Verifica che ogni giorno abbia MAX 2 materie diverse
-4. Focus sui concetti a più alta probabilità d'esame (Profondità: ${depth})
-
-MATERIALI DI PARTENZA:
-${truncatedText}
+IMPORTANTE: Se non hai materiali dettagliati, genera comunque un piano standard per ${course} seguendo il curriculum universitario tipico, MA rispettando SEMPRE il formato con ore specificate.
     `;
 
     return this.callWithRetry(async (ai) => {
@@ -151,21 +168,60 @@ ${truncatedText}
             },
             required: ["summary", "questions", "flashcards", "studyPlan"]
           },
-          temperature: 0.2,
+          temperature: 0.1,
         }
       });
 
       const parsed = JSON.parse(response.text || '{}');
       
-      // Inizializza completedTasks per ogni modulo
+      // Post-processing: forza il formato corretto e inizializza completedTasks
       if (parsed.studyPlan) {
-        parsed.studyPlan = parsed.studyPlan.map((day: any) => ({
-          ...day, 
-          uid: day.uid || this.generateUid(), 
-          completedTasks: day.tasks.map(() => false),
-          isManuallyPlaced: false,
-          assignedDate: null
-        }));
+        parsed.studyPlan = parsed.studyPlan.map((day: any) => {
+          // Forza 4 task se ce ne sono meno
+          const tasks = day.tasks || [];
+          
+          // Aggiungi ore se mancano (fallback)
+          const processedTasks = tasks.map((task: string) => {
+            // Se il task non ha già il formato corretto, aggiungilo
+            if (!task.includes(' - ') || !task.includes('h')) {
+              // Determina se è teoria o pratica
+              const isTheory = task.toLowerCase().includes('stud') || 
+                              task.toLowerCase().includes('teor') || 
+                              task.toLowerCase().includes('analisi') ||
+                              task.toLowerCase().includes('compren');
+              
+              const type = isTheory ? 'TEORIA' : 'PRATICA';
+              const hours = isTheory ? '2h' : '1.5h';
+              
+              // Se non ha già [TIPO], aggiungilo
+              if (!task.startsWith('[')) {
+                return `[${type}] ${task} - ${hours}`;
+              } else {
+                return `${task} - ${hours}`;
+              }
+            }
+            return task;
+          });
+          
+          // Assicurati che ci siano almeno 4 task
+          while (processedTasks.length < 4) {
+            const needsTheory = processedTasks.filter((t: string) => t.includes('[TEORIA]')).length < 2;
+            if (needsTheory) {
+              processedTasks.push(`[TEORIA] Studio approfondito - 2h`);
+            } else {
+              processedTasks.push(`[PRATICA] Esercizi applicativi - 1.5h`);
+            }
+          }
+          
+          return {
+            ...day,
+            tasks: processedTasks,
+            uid: day.uid || this.generateUid(),
+            completedTasks: processedTasks.map(() => false),
+            isManuallyPlaced: false,
+            assignedDate: null
+          };
+        });
       }
 
       return { ...parsed, faculty, course, depth } as StudyMaterialData;
