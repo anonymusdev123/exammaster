@@ -120,6 +120,26 @@ const App: React.FC = () => {
     });
   }, [todayStr]);
 
+  const assignDatesToSession = useCallback((newSession: ExamSession, existingSessions: ExamSession[]): ExamSession => {
+    const examDateObj = new Date(newSession.examDate);
+    const availableDates: string[] = [];
+    let cursor = new Date(todayStr);
+    
+    // Trova date disponibili
+    while (cursor < examDateObj) {
+      const dStr = getLocalDateStr(cursor);
+      availableDates.push(dStr);
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    
+    const plan = newSession.data.studyPlan.map((m, idx) => {
+      const dateIdx = Math.min(Math.floor((idx * availableDates.length) / newSession.data.studyPlan.length), availableDates.length - 1);
+      return { ...m, assignedDate: availableDates[dateIdx] || todayStr };
+    });
+    
+    return { ...newSession, data: { ...newSession.data, studyPlan: plan } };
+  }, [todayStr]);
+
   const handleManualRebalance = useCallback(() => {
     setState(prev => ({
       ...prev,
@@ -246,7 +266,8 @@ const App: React.FC = () => {
           ...s, examDate: config.examDate, examType: config.examType, depth: config.depth,
           content: newContent, data: updatedData, lastUpdateDate: getLocalDateStr()
         } : s);
-        setState(prev => ({ ...prev, sessions: rebalanceAllSessions(updatedSessions), isLoading: false }));
+        // NON ribilanciare automaticamente - troppo lento
+        setState(prev => ({ ...prev, sessions: updatedSessions, isLoading: false }));
         setIsUpdatingSession(false);
       } else {
         setLoadingStep('Ottimizzazione Carico Cognitivo...');
@@ -257,8 +278,10 @@ const App: React.FC = () => {
           content: config.content, pastExamsContent: '', data: data, createdAt: Date.now(),
           colorIndex: state.sessions.length % 6, dayOffs: []
         };
+        // Ribilancia solo per la nuova materia
+        const newSessionWithDates = assignDatesToSession(newSess, state.sessions);
         setState(prev => ({
-          ...prev, sessions: rebalanceAllSessions([...prev.sessions, newSess]),
+          ...prev, sessions: [...prev.sessions, newSessionWithDates],
           activeSessionId: newSess.id, isLoading: false, isAddingNew: false
         }));
       }
