@@ -17,6 +17,14 @@ export enum Importance {
   HIGH = 'HIGH'
 }
 
+export interface User {
+  id: string;
+  email: string;
+  name: string;
+  syncKey: string;
+  avatar?: string;
+}
+
 export interface SummaryUnit {
   title: string;
   content: string;
@@ -46,14 +54,14 @@ export interface MockExam {
 }
 
 export interface StudyPlanDay {
-  uid: string; // ID univoco per il drag & drop
+  uid: string;
   day: number;
   topics: string[];
   tasks: string[];
   priority: Importance;
   assignedDate?: string; 
   completedTasks?: boolean[]; 
-  isManuallyPlaced?: boolean; // Flag per bloccare la posizione durante il rebalance
+  isManuallyPlaced?: boolean;
 }
 
 export interface ExamSession {
@@ -62,7 +70,7 @@ export interface ExamSession {
   course: string;
   examType: ExamType;
   depth: DepthLevel;
-  examDate: string; // ISO Date YYYY-MM-DD
+  examDate: string;
   isPostponed: boolean;
   isPassed?: boolean; 
   content: string;
@@ -86,6 +94,7 @@ export interface StudyMaterialData {
 }
 
 export interface AppState {
+  user: User | null;
   sessions: ExamSession[];
   activeSessionId: string | null;
   isLoading: boolean;

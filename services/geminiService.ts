@@ -45,16 +45,16 @@ export class GeminiService {
 
     const prompt = `
       RUOLO: Senior Instructional Designer Universitario + Tutor Strategico.
-      CORSO: "${course}" (${faculty}). ESAME: ${examDate}.
+      CORSO: "${course}" (${faculty}). DATA ESAME: ${examDate}.
 
-      REGOLE PERMANENTI PER L'ORGANIZZAZIONE DELLO STUDIO (DA SEGUIRE RIGOROSAMENTE):
-      1. MASSIMO 2 MATERIE AL GIORNO - Non superare mai questo limite.
-      2. MODULO 50/50: Ogni sessione deve avere esattamente:
+      REGOLE PERMANENTI PER L'ORGANIZZAZIONE DELLO STUDIO (INVIOLABILI):
+      1. MASSIMO 2 MATERIE AL GIORNO - Non superare mai questo limite cross-materia.
+      2. GIORNO D'ESAME = ZERO STUDIO - Nel giorno ${examDate} non deve essere programmata NESSUNA attività di studio per questa o altre materie. La mente deve essere libera per la prova.
+      3. MODULO 50/50: Ogni sessione giornaliera deve avere:
          - 2 task [TEORIA]: [nome argomento] - [ore stimate]
          - 2 task [PRATICA]: Active recall/Esercizi - [ore stimate]
-      3. COPERTURA: Crea moduli per coprire tutti i giorni fino all'esame.
-      4. PRIORITÀ: Focus sui concetti a più alta probabilità d'esame.
-      5. FORMATO TASKS: Assicurati che ogni task includa la stima oraria.
+      4. COPERTURA: Distribuisci il carico equamente nei giorni precedenti.
+      5. PRIORITÀ: Focus sui concetti a più alta probabilità d'esame basandoti sulla profondità "${depth}".
 
       MATERIALI DI PARTENZA: ${truncatedText}
     `;

@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { ICONS } from '../constants';
-import { ExamSession } from '../types';
+import { ExamSession, User } from '../types';
 
 interface SidebarProps {
   activeTab: string;
@@ -17,10 +17,12 @@ interface SidebarProps {
   isGlobalPlan: boolean;
   isOpen: boolean;
   onClose: () => void;
+  user: User | null;
+  onLogout: () => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ 
-  activeTab, setActiveTab, sessions, activeSessionId, onSelectSession, onAddNew, onShowGlobalPlan, onUpdateMaterials, onDeleteSession, onMarkAsPassed, isGlobalPlan, isOpen, onClose 
+  activeTab, setActiveTab, sessions, activeSessionId, onSelectSession, onAddNew, onShowGlobalPlan, onUpdateMaterials, onDeleteSession, onMarkAsPassed, isGlobalPlan, isOpen, onClose, user, onLogout 
 }) => {
   const menuItems = [
     { id: 'summary', label: 'Riassunto Rapido', icon: ICONS.Book },
@@ -122,13 +124,31 @@ const Sidebar: React.FC<SidebarProps> = ({
           )}
         </div>
 
-        <div className="p-8 border-t border-slate-100">
-           <div className="flex items-center gap-4">
-              <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-black text-xs">AI</div>
-              <div>
-                 <p className="text-[10px] font-black text-slate-900 uppercase tracking-tight">Potenziato da Gemini</p>
-                 <p className="text-[8px] text-slate-400 font-bold uppercase">Pro Expert Tutor Mode</p>
+        <div className="p-6 border-t border-slate-100 bg-slate-50/50">
+           <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3 truncate">
+                <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white font-black text-xs shadow-lg shadow-blue-500/20">
+                  {user?.name?.[0].toUpperCase() || 'U'}
+                </div>
+                <div className="truncate">
+                  <p className="text-xs font-black text-slate-900 truncate tracking-tight">{user?.name || 'Utente'}</p>
+                  <div className="flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
+                    <p className="text-[7px] text-emerald-600 font-black uppercase tracking-widest">Cloud Active</p>
+                  </div>
+                </div>
               </div>
+              <button 
+                onClick={onLogout}
+                className="p-2 text-slate-400 hover:text-rose-500 transition-all"
+                title="Sloggati"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+              </button>
+           </div>
+           <div className="px-3 py-2 bg-white rounded-lg border border-slate-200">
+              <p className="text-[7px] text-slate-400 font-black uppercase tracking-widest mb-1">Sync Key</p>
+              <p className="text-[9px] font-mono font-bold text-slate-600 select-all">{user?.syncKey || 'N/A'}</p>
            </div>
         </div>
       </aside>

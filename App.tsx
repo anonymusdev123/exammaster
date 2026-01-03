@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { AppState, ExamSession, Importance, StudyPlanDay } from './types';
+import { AppState, ExamSession, Importance, StudyPlanDay, User } from './types';
 import { GeminiService } from './services/geminiService';
 import { StorageService } from './services/storageService';
 import Sidebar from './components/Sidebar';
@@ -11,10 +11,12 @@ import SimulationView from './components/SimulationView';
 import ProfessorChatView from './components/ProfessorChatView';
 import PlanView from './components/PlanView';
 import MockExamView from './components/MockExamView';
+import AuthView from './components/AuthView';
 import { ICONS } from './constants';
 
 const App: React.FC = () => {
   const [state, setState] = useState<AppState>({
+    user: null,
     sessions: [],
     activeSessionId: null,
     isLoading: true,
@@ -42,9 +44,9 @@ const App: React.FC = () => {
       new Date(a.examDate).getTime() - new Date(b.examDate).getTime()
     );
 
+    const allExamDates = new Set(sortedSessions.filter(s => !s.isPassed).map(s => s.examDate));
     const daySubjectOccupancy: Record<string, Set<string>> = {};
 
-    // Primo passaggio: marca giorni occupati da moduli bloccati/completati
     sortedSessions.forEach(s => {
       s.data.studyPlan.forEach(m => {
         if (m.assignedDate && (m.isManuallyPlaced || m.assignedDate < todayStr || m.completedTasks?.some(v => v))) {
@@ -66,20 +68,17 @@ const App: React.FC = () => {
         !lockedModules.find(l => l.uid === m.uid) && m.topics[0] !== "SIMULAZIONE"
       ).sort((a, b) => a.day - b.day);
 
-      // Trova date disponibili rispettando il limite di 2 materie al giorno
       const availableDates: string[] = [];
       let cursor = new Date(todayStr);
       while (cursor < examDateObj) {
         const dStr = getLocalDateStr(cursor);
-        if (dStr === session.examDate) { cursor.setDate(cursor.getDate() + 1); continue; }
-        
+        const isAnyExamDay = allExamDates.has(dStr);
         const subjectsToday = daySubjectOccupancy[dStr] || new Set();
         const isDayOff = session.dayOffs?.includes(dStr);
         
-        // Regola 1: Massimo 2 materie al giorno
-        const hasSlot = subjectsToday.size < 2 || subjectsToday.has(session.id);
+        const hasSlot = !isAnyExamDay && !isDayOff && (subjectsToday.size < 2 || subjectsToday.has(session.id));
         
-        if (!isDayOff && hasSlot) {
+        if (hasSlot) {
           availableDates.push(dStr);
         }
         cursor.setDate(cursor.getDate() + 1);
@@ -96,7 +95,6 @@ const App: React.FC = () => {
           daySubjectOccupancy[chosenDate].add(session.id);
         });
 
-        // Riempimento ripassi se ci sono ancora slot liberi
         const occupiedDates = new Set(finalPlan.map(p => p.assignedDate));
         availableDates.forEach(d => {
           if (!occupiedDates.has(d)) {
@@ -104,7 +102,7 @@ const App: React.FC = () => {
              if (subjectsToday.size < 2) {
                finalPlan.push({
                  uid: `recap-${session.id}-${d}`, day: 0, topics: ["Ripasso Strategico"],
-                 tasks: ["[PRATICA] Active Recall sui moduli precedenti - 1h", "[PRATICA] Focus su lacune e stanchezza - 1h"],
+                 tasks: ["[PRATICA] Active Recall sui moduli precedenti - 1h", "[PRATICA] Focus su lacune - 1h"],
                  priority: Importance.MEDIUM, assignedDate: d, completedTasks: [false, false]
                });
                if (!daySubjectOccupancy[d]) daySubjectOccupancy[d] = new Set();
@@ -114,15 +112,14 @@ const App: React.FC = () => {
         });
       }
 
-      // Aggiungi Simulazione Finale il giorno prima
       const dayBeforeExam = new Date(session.examDate);
       dayBeforeExam.setDate(dayBeforeExam.getDate() - 1);
       const dbStr = getLocalDateStr(dayBeforeExam);
       
-      if (!finalPlan.find(p => p.topics[0] === "SIMULAZIONE")) {
+      if (!finalPlan.find(p => p.topics[0] === "SIMULAZIONE") && !allExamDates.has(dbStr)) {
         finalPlan.push({
           uid: `auto-sim-${session.id}`, day: 9999, topics: ["SIMULAZIONE"],
-          tasks: ["[PRATICA] Simulazione d'Esame integrale - 3h", "[PRATICA] Analisi errori e ripasso finale - 2h"], 
+          tasks: ["[PRATICA] Simulazione d'Esame integrale - 3h", "[PRATICA] Analisi errori finale - 2h"], 
           priority: Importance.HIGH, assignedDate: dbStr, completedTasks: [false, false]
         });
         if (!daySubjectOccupancy[dbStr]) daySubjectOccupancy[dbStr] = new Set();
@@ -136,14 +133,21 @@ const App: React.FC = () => {
   useEffect(() => {
     const init = async () => {
       try {
-        const saved = await StorageService.loadSessions();
-        setState(prev => ({
-          ...prev, 
-          sessions: saved, 
-          activeSessionId: saved.length > 0 ? saved[0].id : null,
-          isAddingNew: saved.length === 0, 
-          isLoading: false
-        }));
+        const savedUser = localStorage.getItem('em_user');
+        if (savedUser) {
+          const user = JSON.parse(savedUser);
+          const savedSessions = await StorageService.loadSessions();
+          setState(prev => ({
+            ...prev, 
+            user,
+            sessions: savedSessions, 
+            activeSessionId: savedSessions.length > 0 ? savedSessions[0].id : null,
+            isAddingNew: savedSessions.length === 0, 
+            isLoading: false
+          }));
+        } else {
+          setState(prev => ({ ...prev, isLoading: false }));
+        }
       } catch (e) {
         setState(prev => ({ ...prev, isLoading: false }));
       }
@@ -152,12 +156,39 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (state.isLoading) return;
+    if (state.isLoading || !state.user) return;
     const handler = setTimeout(async () => {
       await StorageService.saveSessions(state.sessions);
     }, 1000);
     return () => clearTimeout(handler);
-  }, [state.sessions, state.isLoading]);
+  }, [state.sessions, state.isLoading, state.user]);
+
+  const handleAuthSuccess = (user: User) => {
+    setState(prev => ({ ...prev, user, isLoading: true }));
+    // Simulazione scaricamento dati dal cloud
+    setTimeout(async () => {
+      const savedSessions = await StorageService.loadSessions();
+      setState(prev => ({ 
+        ...prev, 
+        sessions: savedSessions, 
+        activeSessionId: savedSessions.length > 0 ? savedSessions[0].id : null,
+        isAddingNew: savedSessions.length === 0,
+        isLoading: false 
+      }));
+    }, 1000);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('em_user');
+    setState({
+      user: null,
+      sessions: [],
+      activeSessionId: null,
+      isLoading: false,
+      isAddingNew: false,
+      error: null,
+    });
+  };
 
   const handleMoveModule = useCallback((sessionId: string, moduleUid: string, newDate: string) => {
     setState(prev => {
@@ -208,13 +239,17 @@ const App: React.FC = () => {
       setState(prev => ({ 
         ...prev, 
         isLoading: false, 
-        error: msg === "QUOTA_EXCEEDED" ? "Tanti studenti connessi! Attendi un minuto e riprova." : "Qualcosa è andato storto nell'analisi. Prova a caricare meno testo o riprova tra poco."
+        error: msg === "QUOTA_EXCEEDED" ? "Limite API raggiunto. Riprova tra 60 secondi." : "Errore nell'analisi. Prova con meno testo o file diversi."
       }));
       setLoadingStep('');
     }
   };
 
   const activeSess = state.sessions.find(s => s.id === state.activeSessionId);
+
+  if (!state.user && !state.isLoading) {
+    return <AuthView onAuthSuccess={handleAuthSuccess} />;
+  }
 
   return (
     <div className="min-h-screen flex bg-slate-50/20 font-inter text-slate-900">
@@ -230,6 +265,7 @@ const App: React.FC = () => {
         }} 
         onMarkAsPassed={(id) => setState(prev => ({ ...prev, sessions: prev.sessions.map(s => s.id === id ? { ...s, isPassed: true } : s) }))}
         isGlobalPlan={isGlobalPlan} isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)}
+        user={state.user} onLogout={handleLogout}
       />
       
       <main className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
