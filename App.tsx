@@ -44,6 +44,7 @@ const App: React.FC = () => {
 
     const daySubjectOccupancy: Record<string, Set<string>> = {};
 
+    // Primo passaggio: marca giorni occupati da moduli bloccati/completati
     sortedSessions.forEach(s => {
       s.data.studyPlan.forEach(m => {
         if (m.assignedDate && (m.isManuallyPlaced || m.assignedDate < todayStr || m.completedTasks?.some(v => v))) {
@@ -56,26 +57,36 @@ const App: React.FC = () => {
     return sortedSessions.map(session => {
       if (session.isPassed) return session;
       const examDateObj = new Date(session.examDate);
+      
       const lockedModules = session.data.studyPlan.filter(m => 
         m.isManuallyPlaced || (m.assignedDate && m.assignedDate < todayStr) || (m.completedTasks?.some(v => v))
       );
+      
       const floatingModules = session.data.studyPlan.filter(m => 
         !lockedModules.find(l => l.uid === m.uid) && m.topics[0] !== "SIMULAZIONE"
       ).sort((a, b) => a.day - b.day);
 
+      // Trova date disponibili rispettando il limite di 2 materie al giorno
       const availableDates: string[] = [];
       let cursor = new Date(todayStr);
       while (cursor < examDateObj) {
         const dStr = getLocalDateStr(cursor);
         if (dStr === session.examDate) { cursor.setDate(cursor.getDate() + 1); continue; }
+        
         const subjectsToday = daySubjectOccupancy[dStr] || new Set();
         const isDayOff = session.dayOffs?.includes(dStr);
+        
+        // Regola 1: Massimo 2 materie al giorno
         const hasSlot = subjectsToday.size < 2 || subjectsToday.has(session.id);
-        if (!isDayOff && hasSlot) availableDates.push(dStr);
+        
+        if (!isDayOff && hasSlot) {
+          availableDates.push(dStr);
+        }
         cursor.setDate(cursor.getDate() + 1);
       }
 
       const finalPlan: StudyPlanDay[] = [...lockedModules];
+      
       if (floatingModules.length > 0 && availableDates.length > 0) {
         floatingModules.forEach((m, idx) => {
           const dateIdx = Math.min(Math.floor((idx * availableDates.length) / floatingModules.length), availableDates.length - 1);
@@ -84,27 +95,40 @@ const App: React.FC = () => {
           if (!daySubjectOccupancy[chosenDate]) daySubjectOccupancy[chosenDate] = new Set();
           daySubjectOccupancy[chosenDate].add(session.id);
         });
+
+        // Riempimento ripassi se ci sono ancora slot liberi
         const occupiedDates = new Set(finalPlan.map(p => p.assignedDate));
         availableDates.forEach(d => {
           if (!occupiedDates.has(d)) {
-             finalPlan.push({
-               uid: `recap-${session.id}-${d}`, day: 0, topics: ["Ripasso Strategico"],
-               tasks: ["[PRATICA] Active Recall sui moduli precedenti", "[PRATICA] Focus su lacune"],
-               priority: Importance.MEDIUM, assignedDate: d, completedTasks: [false, false]
-             });
+             const subjectsToday = daySubjectOccupancy[d] || new Set();
+             if (subjectsToday.size < 2) {
+               finalPlan.push({
+                 uid: `recap-${session.id}-${d}`, day: 0, topics: ["Ripasso Strategico"],
+                 tasks: ["[PRATICA] Active Recall sui moduli precedenti - 1h", "[PRATICA] Focus su lacune e stanchezza - 1h"],
+                 priority: Importance.MEDIUM, assignedDate: d, completedTasks: [false, false]
+               });
+               if (!daySubjectOccupancy[d]) daySubjectOccupancy[d] = new Set();
+               daySubjectOccupancy[d].add(session.id);
+             }
           }
         });
       }
+
+      // Aggiungi Simulazione Finale il giorno prima
       const dayBeforeExam = new Date(session.examDate);
       dayBeforeExam.setDate(dayBeforeExam.getDate() - 1);
       const dbStr = getLocalDateStr(dayBeforeExam);
+      
       if (!finalPlan.find(p => p.topics[0] === "SIMULAZIONE")) {
         finalPlan.push({
           uid: `auto-sim-${session.id}`, day: 9999, topics: ["SIMULAZIONE"],
-          tasks: ["[PRATICA] Simulazione d'Esame integrale", "[PRATICA] Analisi errori e ripasso finale"], priority: Importance.HIGH,
-          assignedDate: dbStr, completedTasks: [false, false]
+          tasks: ["[PRATICA] Simulazione d'Esame integrale - 3h", "[PRATICA] Analisi errori e ripasso finale - 2h"], 
+          priority: Importance.HIGH, assignedDate: dbStr, completedTasks: [false, false]
         });
+        if (!daySubjectOccupancy[dbStr]) daySubjectOccupancy[dbStr] = new Set();
+        daySubjectOccupancy[dbStr].add(session.id);
       }
+      
       return { ...session, data: { ...session.data, studyPlan: finalPlan } };
     });
   }, [todayStr]);
@@ -181,11 +205,11 @@ const App: React.FC = () => {
       setActiveTab('summary');
     } catch (err: any) {
       const msg = err.message || "";
-      if (msg === "QUOTA_EXCEEDED") {
-         setState(prev => ({ ...prev, isLoading: false, error: "Tanti studenti connessi! Attendi un minuto e riprova." }));
-      } else {
-         setState(prev => ({ ...prev, isLoading: false, error: "Qualcosa è andato storto nell'analisi. Prova a caricare meno testo o riprova tra poco." }));
-      }
+      setState(prev => ({ 
+        ...prev, 
+        isLoading: false, 
+        error: msg === "QUOTA_EXCEEDED" ? "Tanti studenti connessi! Attendi un minuto e riprova." : "Qualcosa è andato storto nell'analisi. Prova a caricare meno testo o riprova tra poco."
+      }));
       setLoadingStep('');
     }
   };

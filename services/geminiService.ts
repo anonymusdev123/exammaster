@@ -17,8 +17,6 @@ export class GeminiService {
       return await fn(ai);
     } catch (error: any) {
       const msg = error.message || "";
-      
-      // Caso 1: Quota esaurita (429)
       if (msg.includes('429') || msg.includes('quota') || msg.includes('exhausted')) {
         if (retries > 0) {
           await new Promise(res => setTimeout(res, 4000));
@@ -26,17 +24,9 @@ export class GeminiService {
         }
         throw new Error("QUOTA_EXCEEDED");
       }
-      
-      // Caso 2: Chiave non valida o permessi mancanti (Inclusi i messaggi specifici delle linee guida)
-      if (
-        msg.includes("Requested entity was not found") || 
-        msg.includes("API_KEY_INVALID") || 
-        msg.includes("403") || 
-        msg.includes("API key not found")
-      ) {
+      if (msg.includes("Requested entity was not found") || msg.includes("API_KEY_INVALID") || msg.includes("403")) {
          throw new Error("API_KEY_INVALID");
       }
-      
       throw error;
     }
   }
@@ -54,17 +44,19 @@ export class GeminiService {
     const truncatedText = text.length > maxChars ? text.substring(0, maxChars) : text;
 
     const prompt = `
-      RUOLO: Senior Instructional Designer Universitario.
+      RUOLO: Senior Instructional Designer Universitario + Tutor Strategico.
       CORSO: "${course}" (${faculty}). ESAME: ${examDate}.
 
-      REGOLE ARCHITETTURALI DEL PIANO:
-      1. MODULO 50/50: Ogni sessione (2-3h) deve avere ESATTAMENTE:
-         - 2 task [TEORIA]: Concetti core da capire.
-         - 2 task [PRATICA]: Esercizi o active recall.
-      2. COPERTURA CALENDARIO: Crea moduli per saturare TUTTI i giorni fino al ${examDate} (ESCLUSO il giorno dell'esame).
-      3. STRUTTURA: JSON rigoroso.
-      
-      MATERIALI: ${truncatedText}
+      REGOLE PERMANENTI PER L'ORGANIZZAZIONE DELLO STUDIO (DA SEGUIRE RIGOROSAMENTE):
+      1. MASSIMO 2 MATERIE AL GIORNO - Non superare mai questo limite.
+      2. MODULO 50/50: Ogni sessione deve avere esattamente:
+         - 2 task [TEORIA]: [nome argomento] - [ore stimate]
+         - 2 task [PRATICA]: Active recall/Esercizi - [ore stimate]
+      3. COPERTURA: Crea moduli per coprire tutti i giorni fino all'esame.
+      4. PRIORITÀ: Focus sui concetti a più alta probabilità d'esame.
+      5. FORMATO TASKS: Assicurati che ogni task includa la stima oraria.
+
+      MATERIALI DI PARTENZA: ${truncatedText}
     `;
 
     return this.callWithRetry(async (ai) => {
@@ -76,7 +68,7 @@ export class GeminiService {
           responseSchema: {
             type: Type.OBJECT,
             properties: {
-              summary: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { title: { type: Type.STRING }, content: { type: Type.STRING }, importance: { type: Type.STRING, enum: ["HIGH", "MEDIUM", "LOW"] } } } },
+              summary: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { title: { type: Type.STRING }, content: { type: Type.STRING }, details: { type: Type.STRING }, importance: { type: Type.STRING, enum: ["HIGH", "MEDIUM", "LOW"] } } } },
               questions: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { question: { type: Type.STRING }, type: { type: Type.STRING }, modelAnswer: { type: Type.STRING } } } },
               flashcards: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { question: { type: Type.STRING }, answer: { type: Type.STRING } } } },
               studyPlan: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { day: { type: Type.NUMBER }, topics: { type: Type.ARRAY, items: { type: Type.STRING } }, tasks: { type: Type.ARRAY, items: { type: Type.STRING } }, priority: { type: Type.STRING, enum: ["HIGH", "MEDIUM", "LOW"] } } } }
@@ -90,7 +82,7 @@ export class GeminiService {
       const parsed = JSON.parse(response.text || '{}');
       if (parsed.studyPlan) {
         parsed.studyPlan = parsed.studyPlan.map((day: any) => ({
-          ...day, uid: day.uid || this.generateUid()
+          ...day, uid: day.uid || this.generateUid(), completedTasks: day.tasks.map(() => false)
         }));
       }
       return { ...parsed, faculty, course, depth } as StudyMaterialData;
@@ -102,7 +94,7 @@ export class GeminiService {
     return ai.chats.create({
       model: "gemini-3-flash-preview",
       config: {
-        systemInstruction: `Sei il Professore di ${materialData.course}. Interroga lo studente solo su questi materiali: ${fullContent.substring(0, 20000)}.`,
+        systemInstruction: `Sei il Professore di ${materialData.course}. Interroga lo studente solo su questi materiali: ${fullContent.substring(0, 20000)}. Mantieni un tono accademico ma costruttivo.`,
       },
     });
   }
@@ -111,7 +103,7 @@ export class GeminiService {
     return this.callWithRetry(async (ai) => {
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
-        contents: `Spiega: "${concept}". Fonte: ${context.substring(0, 20000)}`,
+        contents: `Spiega in modo didattico: "${concept}". Usa come base questo contesto: ${context.substring(0, 20000)}`,
       });
       return response.text || "Dettaglio non disponibile.";
     });
@@ -121,7 +113,7 @@ export class GeminiService {
     return this.callWithRetry(async (ai) => {
       const response = await ai.models.generateContent({
         model: "gemini-3-pro-preview",
-        contents: `Esame per "${course}". Argomenti: ${content.substring(0, 15000)}. Tracce: ${pastExams.substring(0, 5000)}`,
+        contents: `Genera una simulazione d'esame per "${course}". Argomenti: ${content.substring(0, 15000)}. Tracce passate: ${pastExams.substring(0, 5000)}. Crea domande che riflettono lo stile delle tracce passate.`,
         config: {
           responseMimeType: "application/json",
           responseSchema: {
