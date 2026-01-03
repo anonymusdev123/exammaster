@@ -93,7 +93,9 @@ const App: React.FC = () => {
         floatingModules.forEach((m, idx) => {
           const dateIdx = Math.min(Math.floor((idx * availableDates.length) / floatingModules.length), availableDates.length - 1);
           const chosenDate = availableDates[dateIdx];
-          finalPlan.push({ ...m, assignedDate: chosenDate, isManuallyPlaced: false });
+          // IMPORTANTE: Preserva completedTasks o inizializza con false
+          const completedTasks = m.completedTasks || m.tasks.map(() => false);
+          finalPlan.push({ ...m, assignedDate: chosenDate, isManuallyPlaced: false, completedTasks });
           if (!daySubjectOccupancy[chosenDate]) daySubjectOccupancy[chosenDate] = new Set();
           daySubjectOccupancy[chosenDate].add(session.id);
         });
@@ -108,7 +110,7 @@ const App: React.FC = () => {
         finalPlan.push({
           uid: `auto-sim-${session.id}`, day: 9999, topics: ["SIMULAZIONE"],
           tasks: ["[PRATICA] Simulazione d'Esame integrale - 3h", "[PRATICA] Analisi errori finale - 2h"], 
-          priority: Importance.HIGH, assignedDate: dbStr, completedTasks: [false, false]
+          priority: Importance.HIGH, assignedDate: dbStr, completedTasks: [false, false], isManuallyPlaced: false
         });
         if (!daySubjectOccupancy[dbStr]) daySubjectOccupancy[dbStr] = new Set();
         daySubjectOccupancy[dbStr].add(session.id);

@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { ExamType, DepthLevel, StudyMaterialData, ExamQuestion, Flashcard, MockExam } from "../types";
 
@@ -25,7 +24,7 @@ export class GeminiService {
         throw new Error("QUOTA_EXCEEDED");
       }
       if (msg.includes("Requested entity was not found") || msg.includes("API_KEY_INVALID") || msg.includes("403")) {
-         throw new Error("API_KEY_INVALID");
+        throw new Error("API_KEY_INVALID");
       }
       throw error;
     }
@@ -44,32 +43,55 @@ export class GeminiService {
     const truncatedText = text.length > maxChars ? text.substring(0, maxChars) : text;
 
     const prompt = `
-      RUOLO: Senior Instructional Designer Universitario + Tutor Strategico.
-      CORSO: "${course}" (${faculty}). DATA ESAME: ${examDate}.
+RUOLO: Senior Instructional Designer Universitario + Tutor Strategico.
+CORSO: "${course}" (${faculty}). DATA ESAME: ${examDate}.
 
-      ISTEMA DI PIANIFICAZIONE STUDIO - REGOLE INVIOLABILI:
-      Segui ESATTAMENTE queste regole per la generazione del piano:
-      
-      REGOLA #1 (PRIORITÀ ASSOLUTA):
-      Ogni giorno può contenere MASSIMO 2 MATERIE DIVERSE.
-      NON 3, NON 4, NON 5 - SOLO 2 MATERIE.
-      Se un giorno ha già 2 materie, NON aggiungerne altre.
+**SISTEMA DI PIANIFICAZIONE STUDIO - REGOLE INVIOLABILI**
 
-      REGOLA #2:
-      GIORNO D'ESAME = ZERO STUDIO. 
-      Nel giorno ${examDate} non deve essere programmata NESSUNA attività di studio. La mente deve essere libera.
+REGOLA #1 (MASSIMA PRIORITÀ):
+- Ogni giorno può contenere MASSIMO 2 MATERIE DIVERSE
+- NON 3, NON 4, NON 5 - SOLO 2 MATERIE
+- Se un giorno ha già 2 materie, NON aggiungerne altre
+- È PREFERIBILE mettere più sessioni della STESSA materia nello stesso giorno
 
-      REGOLA #3 (MODULO 50/50):
-      Ogni sessione giornaliera deve avere:
-      - 2 task [TEORIA]: [nome argomento] - [ore stimate]
-      - 2 task [PRATICA]: Active recall/Esercizi - [ore stimate]
+REGOLA #2 (GIORNO D'ESAME):
+- Nel giorno ${examDate} NON deve essere programmata NESSUNA attività di studio
+- La mente deve essere libera e riposata
 
-      PROCESSO:
-      1. Conta le materie uniche per giorno.
-      2. Se il conteggio è = 2, passa al giorno dopo.
-      3. Focus sui concetti a più alta probabilità d'esame (Profondità: ${depth}).
+REGOLA #3 (STRUTTURA TASK):
+Ogni sessione di studio deve contenere ESATTAMENTE 4 task:
+- 2 task [TEORIA]: [nome argomento] - Xh (specifica ore)
+- 2 task [PRATICA]: [esercizi/active recall] - Xh (specifica ore)
 
-      MATERIALI DI PARTENZA: ${truncatedText}
+REGOLA #4 (STIMA ORE OBBLIGATORIA):
+- OGNI task DEVE avere una stima ore esplicita nel formato "- Xh" o "- X.Xh"
+- Esempi corretti:
+  * "[TEORIA] Introduzione alla statistica - 2h"
+  * "[PRATICA] Esercizi sulla media - 1.5h"
+  * "[TEORIA] Distribuzione normale - 3h"
+- NON scrivere task senza ore: è OBBLIGATORIO
+
+ESEMPIO DI GIORNO CORRETTO:
+{
+  "day": 1,
+  "topics": ["Statistica Descrittiva"],
+  "tasks": [
+    "[TEORIA] Media, moda, mediana - 2h",
+    "[TEORIA] Varianza e deviazione standard - 1.5h",
+    "[PRATICA] Esercizi su media e varianza - 2h",
+    "[PRATICA] Active recall sui concetti base - 1h"
+  ],
+  "priority": "HIGH"
+}
+
+PROCESSO DI PIANIFICAZIONE:
+1. Analizza il materiale e dividi in moduli logici
+2. Per ogni modulo, crea 4 task (2 teoria + 2 pratica) con ore specificate
+3. Verifica che ogni giorno abbia MAX 2 materie diverse
+4. Focus sui concetti a più alta probabilità d'esame (Profondità: ${depth})
+
+MATERIALI DI PARTENZA:
+${truncatedText}
     `;
 
     return this.callWithRetry(async (ai) => {
@@ -81,10 +103,51 @@ export class GeminiService {
           responseSchema: {
             type: Type.OBJECT,
             properties: {
-              summary: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { title: { type: Type.STRING }, content: { type: Type.STRING }, details: { type: Type.STRING }, importance: { type: Type.STRING, enum: ["HIGH", "MEDIUM", "LOW"] } } } },
-              questions: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { question: { type: Type.STRING }, type: { type: Type.STRING }, modelAnswer: { type: Type.STRING } } } },
-              flashcards: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { question: { type: Type.STRING }, answer: { type: Type.STRING } } } },
-              studyPlan: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { day: { type: Type.NUMBER }, topics: { type: Type.ARRAY, items: { type: Type.STRING } }, tasks: { type: Type.ARRAY, items: { type: Type.STRING } }, priority: { type: Type.STRING, enum: ["HIGH", "MEDIUM", "LOW"] } } } }
+              summary: { 
+                type: Type.ARRAY, 
+                items: { 
+                  type: Type.OBJECT, 
+                  properties: { 
+                    title: { type: Type.STRING }, 
+                    content: { type: Type.STRING }, 
+                    details: { type: Type.STRING }, 
+                    importance: { type: Type.STRING, enum: ["HIGH", "MEDIUM", "LOW"] } 
+                  } 
+                } 
+              },
+              questions: { 
+                type: Type.ARRAY, 
+                items: { 
+                  type: Type.OBJECT, 
+                  properties: { 
+                    question: { type: Type.STRING }, 
+                    type: { type: Type.STRING }, 
+                    modelAnswer: { type: Type.STRING } 
+                  } 
+                } 
+              },
+              flashcards: { 
+                type: Type.ARRAY, 
+                items: { 
+                  type: Type.OBJECT, 
+                  properties: { 
+                    question: { type: Type.STRING }, 
+                    answer: { type: Type.STRING } 
+                  } 
+                } 
+              },
+              studyPlan: { 
+                type: Type.ARRAY, 
+                items: { 
+                  type: Type.OBJECT, 
+                  properties: { 
+                    day: { type: Type.NUMBER }, 
+                    topics: { type: Type.ARRAY, items: { type: Type.STRING } }, 
+                    tasks: { type: Type.ARRAY, items: { type: Type.STRING } }, 
+                    priority: { type: Type.STRING, enum: ["HIGH", "MEDIUM", "LOW"] } 
+                  } 
+                } 
+              }
             },
             required: ["summary", "questions", "flashcards", "studyPlan"]
           },
@@ -93,11 +156,18 @@ export class GeminiService {
       });
 
       const parsed = JSON.parse(response.text || '{}');
+      
+      // Inizializza completedTasks per ogni modulo
       if (parsed.studyPlan) {
         parsed.studyPlan = parsed.studyPlan.map((day: any) => ({
-          ...day, uid: day.uid || this.generateUid(), completedTasks: day.tasks.map(() => false)
+          ...day, 
+          uid: day.uid || this.generateUid(), 
+          completedTasks: day.tasks.map(() => false),
+          isManuallyPlaced: false,
+          assignedDate: null
         }));
       }
+
       return { ...parsed, faculty, course, depth } as StudyMaterialData;
     });
   }
