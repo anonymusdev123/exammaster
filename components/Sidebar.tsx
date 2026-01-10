@@ -1,6 +1,8 @@
-import React from 'react';
+
+import React, { useState } from 'react';
 import { ICONS } from '../constants';
 import { ExamSession, User } from '../types';
+import { StorageService } from '../services/storageService';
 
 interface SidebarProps {
   activeTab: string;
@@ -23,6 +25,8 @@ interface SidebarProps {
 const Sidebar: React.FC<SidebarProps> = ({ 
   activeTab, setActiveTab, sessions, activeSessionId, onSelectSession, onAddNew, onShowGlobalPlan, onUpdateMaterials, onDeleteSession, onMarkAsPassed, isGlobalPlan, isOpen, onClose, user, onLogout 
 }) => {
+  const [copyStatus, setCopyStatus] = useState<'IDLE' | 'COPIED'>('IDLE');
+
   const menuItems = [
     { id: 'summary', label: 'Riassunto Rapido', icon: ICONS.Book },
     { id: 'questions', label: 'Cosa Chiedono?', icon: ICONS.Clipboard },
@@ -33,6 +37,17 @@ const Sidebar: React.FC<SidebarProps> = ({
   ];
 
   const activeSess = sessions.find(s => s.id === activeSessionId);
+
+  const handleCopySyncCode = async () => {
+    try {
+      const code = await StorageService.generateTransferCode();
+      await navigator.clipboard.writeText(code);
+      setCopyStatus('COPIED');
+      setTimeout(() => setCopyStatus('IDLE'), 2000);
+    } catch (err) {
+      alert("Errore nella generazione del codice");
+    }
+  };
 
   return (
     <>
@@ -101,7 +116,6 @@ const Sidebar: React.FC<SidebarProps> = ({
               <div className="mt-8 pt-6 border-t border-slate-200 space-y-1">
                 <p className="px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Opzioni</p>
                 
-                {/* NUOVO: Pulsante Aggiorna Materiali */}
                 <button 
                   onClick={() => { onUpdateMaterials(); if(window.innerWidth < 1024) onClose(); }}
                   className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold text-blue-600 hover:bg-blue-50 transition-all"
@@ -142,21 +156,32 @@ const Sidebar: React.FC<SidebarProps> = ({
                   <p className="text-xs font-black text-slate-900 truncate tracking-tight">{user?.name || 'Utente'}</p>
                   <div className="flex items-center gap-1">
                     <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
-                    <p className="text-[7px] text-emerald-600 font-black uppercase tracking-widest">Cloud Active</p>
+                    <p className="text-[7px] text-emerald-600 font-black uppercase tracking-widest">Local Sync Active</p>
                   </div>
                 </div>
               </div>
               <button 
                 onClick={onLogout}
                 className="p-2 text-slate-400 hover:text-rose-500 transition-all"
-                title="Sloggati"
+                title="Esci"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
               </button>
            </div>
-           <div className="px-3 py-2 bg-white rounded-lg border border-slate-200">
-              <p className="text-[7px] text-slate-400 font-black uppercase tracking-widest mb-1">Sync Key</p>
-              <p className="text-[9px] font-mono font-bold text-slate-600 select-all">{user?.syncKey || 'N/A'}</p>
+           
+           <div className="space-y-2">
+             <div className="px-3 py-2 bg-white rounded-lg border border-slate-200">
+                <p className="text-[7px] text-slate-400 font-black uppercase tracking-widest mb-1">Account Key</p>
+                <p className="text-[9px] font-mono font-bold text-slate-600 truncate">{user?.syncKey || 'N/A'}</p>
+             </div>
+             <button 
+                onClick={handleCopySyncCode}
+                className={`w-full py-2.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 border-2 ${copyStatus === 'COPIED' ? 'bg-emerald-500 border-emerald-500 text-white' : 'bg-white border-blue-100 text-blue-600 hover:border-blue-300 shadow-sm'}`}
+             >
+                <ICONS.Clipboard className="w-3 h-3" />
+                {copyStatus === 'COPIED' ? 'CODICE COPIATO!' : 'COPIA CODICE SYNC'}
+             </button>
+             <p className="text-[7px] text-slate-400 text-center font-medium italic px-2 leading-tight">Usa questo codice per caricare i tuoi dati su un altro computer o dispositivo.</p>
            </div>
         </div>
       </aside>

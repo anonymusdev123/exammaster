@@ -64,6 +64,13 @@ export interface StudyPlanDay {
   isManuallyPlaced?: boolean;
 }
 
+export interface ChatMessage {
+  role: 'user' | 'model';
+  text: string;
+  timestamp: number;
+  attachments?: string[];
+}
+
 export interface ExamSession {
   id: string;
   faculty: string;
@@ -76,6 +83,7 @@ export interface ExamSession {
   content: string;
   pastExamsContent: string;
   data: StudyMaterialData;
+  chatHistory: ChatMessage[];
   createdAt: number;
   lastUpdateDate?: string;
   colorIndex?: number;

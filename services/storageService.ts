@@ -21,7 +21,6 @@ export class StorageService {
     });
   }
 
-  // Salvataggio locale veloce (IndexedDB)
   static async saveSessions(sessions: ExamSession[]): Promise<void> {
     const db = await this.openDB();
     const tx = db.transaction(STORE_NAME, 'readwrite');
@@ -54,9 +53,32 @@ export class StorageService {
     });
   }
 
-  // --- CLOUD SYNC SIMULATION ---
-  
-  // Spinge i dati verso il "Cloud" (simulato con localStorage globale per account)
+  // Funzione per generare un codice di trasferimento per altri dispositivi
+  static async generateTransferCode(): Promise<string> {
+    const sessions = await this.loadSessions();
+    const data = {
+      sessions,
+      exportedAt: Date.now(),
+      v: "1.0"
+    };
+    // Codifica in Base64 per facilitare il copia-incolla
+    return btoa(unescape(encodeURIComponent(JSON.stringify(data))));
+  }
+
+  // Funzione per importare dati da un altro dispositivo
+  static async importFromTransferCode(code: string): Promise<ExamSession[]> {
+    try {
+      const decoded = JSON.parse(decodeURIComponent(escape(atob(code))));
+      if (decoded.sessions) {
+        await this.saveSessions(decoded.sessions);
+        return decoded.sessions;
+      }
+      throw new Error("Formato codice non valido");
+    } catch (e) {
+      throw new Error("Codice di sincronizzazione non valido o corrotto");
+    }
+  }
+
   static async pushToCloud(userEmail: string, sessions: ExamSession[]): Promise<void> {
     const cloudKey = CLOUD_MOCK_PREFIX + userEmail.toLowerCase();
     const data = JSON.stringify({
@@ -64,10 +86,8 @@ export class StorageService {
       lastSync: Date.now()
     });
     localStorage.setItem(cloudKey, data);
-    // In produzione qui ci sarebbe: await fetch('/api/sync', { method: 'POST', body: data })
   }
 
-  // Recupera i dati dal "Cloud" quando si accede da un nuovo dispositivo
   static async pullFromCloud(userEmail: string): Promise<ExamSession[] | null> {
     const cloudKey = CLOUD_MOCK_PREFIX + userEmail.toLowerCase();
     const cloudData = localStorage.getItem(cloudKey);
@@ -75,7 +95,6 @@ export class StorageService {
     
     try {
       const parsed = JSON.parse(cloudData);
-      // Sincronizziamo il database locale con quello cloud appena scaricato
       if (parsed.sessions) {
         await this.saveSessions(parsed.sessions);
         return parsed.sessions;

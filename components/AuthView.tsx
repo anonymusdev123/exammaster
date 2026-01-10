@@ -13,38 +13,49 @@ const AuthView: React.FC<AuthViewProps> = ({ onAuthSuccess }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
+  const [syncCode, setSyncCode] = useState('');
+  const [showSyncInput, setShowSyncInput] = useState(false);
   const [loading, setLoading] = useState(false);
   const [syncStatus, setSyncStatus] = useState('');
+  const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setError(null);
     setSyncStatus('Verifica credenziali...');
     
-    // Simulazione latenza di rete e autenticazione cloud
     setTimeout(async () => {
-      setSyncStatus('Sincronizzazione dati cloud...');
-      
-      const userEmail = email.toLowerCase();
-      
-      // Tentativo di recupero dati dal cloud (Cross-device simulation)
-      const cloudSessions = await StorageService.pullFromCloud(userEmail);
-      
-      const mockUser: User = {
-        id: crypto.randomUUID(),
-        email: userEmail,
-        name: isLogin ? (userEmail.split('@')[0]) : name,
-        syncKey: Math.random().toString(36).substring(2, 15).toUpperCase(),
-      };
-      
-      // Salvataggio sessione utente locale
-      localStorage.setItem('em_user', JSON.stringify(mockUser));
-      
-      setSyncStatus('Dati pronti!');
-      setTimeout(() => {
-        onAuthSuccess(mockUser, cloudSessions);
+      try {
+        let finalSessions: ExamSession[] | null = null;
+        
+        // Se l'utente ha inserito un codice di sincronizzazione, importiamo quello prioritariamente
+        if (syncCode.trim()) {
+          setSyncStatus('Importazione dati da altro dispositivo...');
+          finalSessions = await StorageService.importFromTransferCode(syncCode.trim());
+        } else {
+          setSyncStatus('Sincronizzazione dati cloud...');
+          finalSessions = await StorageService.pullFromCloud(email.toLowerCase());
+        }
+        
+        const mockUser: User = {
+          id: crypto.randomUUID(),
+          email: email.toLowerCase(),
+          name: isLogin ? (email.split('@')[0]) : name,
+          syncKey: Math.random().toString(36).substring(2, 15).toUpperCase(),
+        };
+        
+        localStorage.setItem('em_user', JSON.stringify(mockUser));
+        
+        setSyncStatus('Dati pronti!');
+        setTimeout(() => {
+          onAuthSuccess(mockUser, finalSessions);
+          setLoading(false);
+        }, 500);
+      } catch (err: any) {
+        setError(err.message || "Errore durante l'accesso");
         setLoading(false);
-      }, 500);
+      }
     }, 1200);
   };
 
@@ -59,7 +70,13 @@ const AuthView: React.FC<AuthViewProps> = ({ onAuthSuccess }) => {
           <p className="text-slate-400 font-bold uppercase text-[10px] tracking-[0.3em] mt-2">Accedi ai tuoi studi ovunque</p>
         </div>
 
-        <div className="bg-white rounded-[3.5rem] shadow-2xl shadow-blue-500/10 p-10 md:p-16 border border-slate-100">
+        <div className="bg-white rounded-[3.5rem] shadow-2xl shadow-blue-500/10 p-10 md:p-16 border border-slate-100 relative overflow-hidden">
+          {error && (
+            <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-2xl text-red-600 text-xs font-bold text-center animate-shake">
+              {error}
+            </div>
+          )}
+
           <div className="flex bg-slate-100 p-2 rounded-2xl mb-10">
             <button 
               onClick={() => setIsLogin(true)}
@@ -112,6 +129,28 @@ const AuthView: React.FC<AuthViewProps> = ({ onAuthSuccess }) => {
               />
             </div>
 
+            <div className="pt-2">
+              <button 
+                type="button" 
+                onClick={() => setShowSyncInput(!showSyncInput)}
+                className="text-[9px] font-black text-blue-600 uppercase tracking-widest hover:underline"
+              >
+                {showSyncInput ? '- Nascondi opzioni sync' : '+ Importa dati da altro dispositivo'}
+              </button>
+              
+              {showSyncInput && (
+                <div className="mt-4 p-6 bg-blue-50/50 rounded-2xl border border-blue-100 animate-slideDown">
+                  <label className="text-[8px] font-black text-blue-400 uppercase tracking-widest block mb-2">Incolla qui il Codice di Trasferimento</label>
+                  <textarea 
+                    value={syncCode}
+                    onChange={(e) => setSyncCode(e.target.value)}
+                    placeholder="Incolla il codice generato sull'altro dispositivo..."
+                    className="w-full h-24 p-4 bg-white border border-blue-100 rounded-xl text-[10px] font-mono outline-none focus:border-blue-500 transition-all resize-none"
+                  />
+                </div>
+              )}
+            </div>
+
             <button 
               type="submit" 
               disabled={loading}
@@ -121,7 +160,7 @@ const AuthView: React.FC<AuthViewProps> = ({ onAuthSuccess }) => {
                 <div className="flex flex-col items-center">
                   <div className="flex items-center gap-3 mb-1">
                     <div className="w-5 h-5 border-3 border-white/30 border-t-white rounded-full animate-spin"></div>
-                    <span>{isLogin ? 'Accesso in corso...' : 'Creazione Account...'}</span>
+                    <span>Caricamento...</span>
                   </div>
                   <span className="text-[8px] opacity-60 font-black uppercase tracking-widest">{syncStatus}</span>
                 </div>
@@ -130,7 +169,7 @@ const AuthView: React.FC<AuthViewProps> = ({ onAuthSuccess }) => {
           </form>
 
           <p className="mt-8 text-center text-slate-400 text-[10px] font-black uppercase tracking-widest">
-            {isLogin ? 'I tuoi materiali sono sincronizzati in tempo reale' : 'Il tuo piano sarà disponibile su tutti i dispositivi'}
+            I tuoi materiali saranno sincronizzati localmente
           </p>
         </div>
       </div>

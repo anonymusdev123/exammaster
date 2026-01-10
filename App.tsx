@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { AppState, ExamSession, Importance, StudyPlanDay, User, StudyMaterialData } from './types';
+import { AppState, ExamSession, Importance, StudyPlanDay, User, StudyMaterialData, ChatMessage } from './types';
 import { GeminiService } from './services/geminiService';
 import { StorageService } from './services/storageService';
 import Sidebar from './components/Sidebar';
@@ -216,7 +216,7 @@ const App: React.FC = () => {
           id: crypto.randomUUID(), faculty: config.faculty, course: config.course, examType: config.examType,
           depth: config.depth, examDate: config.examDate, isPostponed: false, isPassed: false,
           content: config.content, pastExamsContent: '', data: newData, createdAt: Date.now(),
-          colorIndex: state.sessions.length % 6, dayOffs: []
+          colorIndex: state.sessions.length % 6, dayOffs: [], chatHistory: []
         };
         
         setState(prev => ({
@@ -229,6 +229,13 @@ const App: React.FC = () => {
       setState(prev => ({ ...prev, isLoading: false, error: "Errore. Riprova con meno testo o attendi un istante." }));
     }
     setLoadingStep('');
+  };
+
+  const handleUpdateChat = (sessionId: string, newHistory: ChatMessage[]) => {
+    setState(prev => ({
+      ...prev,
+      sessions: prev.sessions.map(s => s.id === sessionId ? { ...s, chatHistory: newHistory } : s)
+    }));
   };
 
   const activeSess = state.sessions.find(s => s.id === state.activeSessionId);
@@ -269,11 +276,15 @@ const App: React.FC = () => {
             <div className="flex items-center justify-center min-h-full p-4">
               <SetupForm 
                 onAnalyze={handleAnalyze} loading={state.isLoading} error={state.error} 
+                canCancel={state.sessions.length > 0}
                 initialData={isUpdatingSession && activeSess ? {
                   faculty: activeSess.faculty, course: activeSess.course,
                   examDate: activeSess.examDate, examType: activeSess.examType, depth: activeSess.depth
                 } : undefined}
-                onCancel={() => { setIsUpdatingSession(false); setState(p => ({ ...p, isAddingNew: p.sessions.length === 0 })); }}
+                onCancel={() => { 
+                  setIsUpdatingSession(false); 
+                  setState(p => ({ ...p, isAddingNew: false, activeSessionId: p.activeSessionId || (p.sessions.length > 0 ? p.sessions[0].id : null) })); 
+                }}
               />
             </div>
           </div>
@@ -328,7 +339,7 @@ const App: React.FC = () => {
                         case 'summary': return <SummaryView summary={activeSess.data.summary} />;
                         case 'recall': return <QuizView flashcards={activeSess.data.flashcards} onRegenerate={() => {}} isLoading={false} sessionContent={activeSess.content} />;
                         case 'simulation': return <SimulationView materialData={activeSess.data} fullContent={activeSess.content} />;
-                        case 'chat': return <ProfessorChatView materialData={activeSess.data} fullContent={activeSess.content} />;
+                        case 'chat': return <ProfessorChatView session={activeSess} onUpdateChat={(h) => handleUpdateChat(activeSess.id, h)} />;
                         case 'mock': return <MockExamView session={activeSess} onUpdateSession={(u) => setState(p => ({ ...p, sessions: p.sessions.map(s => s.id === u.id ? u : s) }))} />;
                         case 'questions': return (
                           <div className="space-y-12">

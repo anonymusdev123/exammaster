@@ -35,9 +35,10 @@ interface SetupFormProps {
     examDate: string;
   };
   onCancel?: () => void;
+  canCancel?: boolean;
 }
 
-const SetupForm: React.FC<SetupFormProps> = ({ onAnalyze, loading, error, initialData, onCancel }) => {
+const SetupForm: React.FC<SetupFormProps> = ({ onAnalyze, loading, error, initialData, onCancel, canCancel = true }) => {
   const [faculty, setFaculty] = useState(initialData?.faculty || '');
   const [course, setCourse] = useState(initialData?.course || '');
   const [examType, setExamType] = useState<ExamType>(initialData?.examType || ExamType.WRITTEN);
@@ -61,9 +62,6 @@ const SetupForm: React.FC<SetupFormProps> = ({ onAnalyze, loading, error, initia
     e.preventDefault();
     if (!course || !faculty || !examDate) return;
     
-    // In modalità aggiornamento, permettiamo l'invio anche se il materiale non è cambiato (solo cambio metadati)
-    if (!initialData && manualNotes.length === 0 && uploadedFiles.length === 0) return;
-
     const combinedContent = `
       [NOTE AGGIUNTIVE STUDENTE]:
       ${manualNotes}
@@ -115,14 +113,14 @@ const SetupForm: React.FC<SetupFormProps> = ({ onAnalyze, loading, error, initia
   };
 
   return (
-    <div className="max-w-4xl mx-auto py-6 md:py-12 px-4 md:px-6 animate-fadeIn relative">
-      {onCancel && (
+    <div className="max-w-4xl mx-auto py-6 md:py-12 px-4 md:px-6 animate-fadeIn relative w-full">
+      {canCancel && onCancel && (
         <button 
           onClick={onCancel}
-          className="absolute top-0 right-4 p-3 bg-white border border-slate-200 text-slate-400 rounded-2xl hover:text-slate-600 hover:bg-slate-50 transition-all shadow-sm z-10"
-          title="Torna indietro"
+          className="absolute -top-4 right-4 md:top-0 md:right-0 p-4 bg-white border-2 border-slate-100 text-slate-400 rounded-full hover:text-rose-500 hover:border-rose-100 hover:bg-rose-50 transition-all shadow-xl z-50 flex items-center justify-center group"
+          title="Annulla e torna alla Dashboard"
         >
-          <ICONS.XMark className="w-6 h-6" />
+          <ICONS.XMark className="w-6 h-6 group-hover:rotate-90 transition-transform" />
         </button>
       )}
 
@@ -133,63 +131,63 @@ const SetupForm: React.FC<SetupFormProps> = ({ onAnalyze, loading, error, initia
         <h2 className="text-2xl md:text-4xl font-black text-slate-900 mb-2 tracking-tight">
           {initialData ? 'Modifica Esame' : 'Nuovo Esame'}
         </h2>
-        {initialData && (
-          <div className="inline-block px-4 py-1.5 bg-blue-50 text-blue-600 rounded-full text-[10px] font-black tracking-widest uppercase border border-blue-100 mb-4 animate-pulse">
-            Sincronizzazione IA
-          </div>
-        )}
         <p className="text-slate-500 text-xs md:text-sm font-medium">
           {initialData 
-            ? 'Modifica i dettagli dell\'appello o aggiungi nuovo materiale per riadattare la strategia.' 
+            ? 'Modifica i dettagli dell\'appello o aggiungi nuovo materiale.' 
             : "L'IA organizzerà lo studio massimizzando ogni giorno disponibile."}
         </p>
       </div>
 
       <form onSubmit={handleSubmit} className="bg-white rounded-[2.5rem] md:rounded-[3.5rem] shadow-xl border border-slate-100 p-6 md:p-12 space-y-8">
-        <div className="grid grid-cols-2 gap-4 md:gap-8">
+        {error && (
+          <div className="p-4 bg-red-50 border border-red-100 rounded-2xl text-red-600 text-xs font-bold animate-shake">
+            {error}
+          </div>
+        )}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-8">
           <div className="space-y-2">
-            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Facoltà</label>
+            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-2">Facoltà</label>
             <input 
               type="text" 
               value={faculty} 
               onChange={(e) => setFaculty(e.target.value)}
               readOnly={!!initialData}
               placeholder="es. Medicina, Ingegneria..."
-              className={`w-full px-4 py-4 border-2 border-slate-200 rounded-2xl font-bold text-base outline-none focus:border-blue-500 transition-all text-slate-900 shadow-sm ${initialData ? 'bg-slate-50 text-slate-400' : 'bg-white'}`} 
+              className={`w-full px-5 py-4 border-2 border-slate-100 rounded-2xl font-bold text-base outline-none focus:border-blue-500 transition-all text-slate-900 shadow-sm ${initialData ? 'bg-slate-50 text-slate-400' : 'bg-white'}`} 
               required
             />
           </div>
           <div className="space-y-2">
-            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Materia</label>
+            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-2">Materia</label>
             <input 
               type="text" 
               value={course} 
               onChange={(e) => setCourse(e.target.value)}
               readOnly={!!initialData}
               placeholder="es. Anatomia, Analisi 1..."
-              className={`w-full px-4 py-4 border-2 border-slate-200 rounded-2xl font-bold text-base outline-none focus:border-blue-500 transition-all text-slate-900 shadow-sm ${initialData ? 'bg-slate-50 text-slate-400' : 'bg-white'}`} 
+              className={`w-full px-5 py-4 border-2 border-slate-100 rounded-2xl font-bold text-base outline-none focus:border-blue-500 transition-all text-slate-900 shadow-sm ${initialData ? 'bg-slate-50 text-slate-400' : 'bg-white'}`} 
               required
             />
           </div>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 md:gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-8">
           <div className="space-y-2">
-            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Data Appello</label>
+            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-2">Data Appello</label>
             <input 
               type="date" 
               value={examDate} 
               onChange={(e) => setExamDate(e.target.value)} 
-              className="w-full px-4 py-4 border-2 border-slate-200 rounded-2xl font-bold text-base outline-none focus:border-blue-500 transition-all text-slate-900 bg-white shadow-sm" 
+              className="w-full px-5 py-4 border-2 border-slate-100 rounded-2xl font-bold text-base outline-none focus:border-blue-500 transition-all text-slate-900 bg-white shadow-sm" 
               required 
             />
           </div>
           <div className="space-y-2">
-            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Tipo Esame</label>
+            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-2">Tipo Esame</label>
             <select 
               value={examType} 
               onChange={(e) => setExamType(e.target.value as ExamType)} 
-              className="w-full px-4 py-4 border-2 border-slate-200 rounded-2xl font-bold text-base appearance-none text-slate-900 bg-white outline-none focus:border-blue-500 shadow-sm"
+              className="w-full px-5 py-4 border-2 border-slate-100 rounded-2xl font-bold text-base appearance-none text-slate-900 bg-white outline-none focus:border-blue-500 shadow-sm"
             >
               <option value={ExamType.WRITTEN}>SCRITTO</option>
               <option value={ExamType.ORAL}>ORALE</option>
@@ -197,11 +195,11 @@ const SetupForm: React.FC<SetupFormProps> = ({ onAnalyze, loading, error, initia
             </select>
           </div>
           <div className="space-y-2">
-            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Obiettivo Voto</label>
+            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-2">Obiettivo Voto</label>
             <select 
               value={depth} 
               onChange={(e) => setDepth(e.target.value as DepthLevel)} 
-              className="w-full px-4 py-4 border-2 border-slate-200 rounded-2xl font-bold text-base appearance-none text-slate-900 bg-white outline-none focus:border-blue-500 shadow-sm"
+              className="w-full px-5 py-4 border-2 border-slate-100 rounded-2xl font-bold text-base appearance-none text-slate-900 bg-white outline-none focus:border-blue-500 shadow-sm"
             >
               <option value={DepthLevel.BASIC}>18-24</option>
               <option value={DepthLevel.MEDIUM}>24-27</option>
@@ -212,8 +210,8 @@ const SetupForm: React.FC<SetupFormProps> = ({ onAnalyze, loading, error, initia
 
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
-              {initialData ? 'Integra nuovi materiali (opzionale)' : "Materiali d'esame"}
+            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-2">
+              {initialData ? 'Integra nuovi materiali' : "Materiali d'esame"}
             </label>
             <div className="flex gap-2">
               <input type="file" id="setup-upload" className="hidden" multiple onChange={handleFileUpload} />
@@ -235,7 +233,7 @@ const SetupForm: React.FC<SetupFormProps> = ({ onAnalyze, loading, error, initia
                       <p className="text-[9px] font-bold text-slate-400 uppercase">{file.size}</p>
                     </div>
                   </div>
-                  <button onClick={() => removeFile(file.name)} className="p-2 text-slate-300 hover:text-red-500 transition-all">
+                  <button type="button" onClick={() => removeFile(file.name)} className="p-2 text-slate-300 hover:text-red-500 transition-all">
                     <ICONS.XMark className="w-5 h-5" />
                   </button>
                 </div>
@@ -246,17 +244,17 @@ const SetupForm: React.FC<SetupFormProps> = ({ onAnalyze, loading, error, initia
           <textarea 
             value={manualNotes} 
             onChange={(e) => setManualNotes(e.target.value)} 
-            className="w-full px-6 py-6 border-2 border-slate-200 rounded-[2rem] h-40 outline-none focus:border-blue-500 font-medium text-base resize-none shadow-sm text-slate-900 bg-white" 
-            placeholder={initialData ? "Aggiungi nuovi appunti o lascia vuoto se vuoi modificare solo le date..." : "Incolla qui i tuoi appunti o specifica le istruzioni per l'IA..."} 
+            className="w-full px-8 py-8 border-2 border-slate-100 rounded-[2rem] h-48 outline-none focus:border-blue-500 font-medium text-base resize-none shadow-sm text-slate-900 bg-white" 
+            placeholder={initialData ? "Aggiungi nuovi appunti..." : "Incolla qui i tuoi appunti o specifica le istruzioni per l'IA..."} 
           />
         </div>
 
         <button 
           type="submit" 
           disabled={loading || isExtracting || !course || !examDate} 
-          className="w-full py-6 bg-blue-600 text-white rounded-[2.5rem] font-black text-xl hover:bg-blue-700 transition-all shadow-2xl disabled:opacity-50"
+          className="w-full py-6 bg-blue-600 text-white rounded-[2.5rem] font-black text-xl hover:bg-blue-700 transition-all shadow-2xl disabled:opacity-50 active:scale-95"
         >
-          {loading ? 'Riorganizzazione IA...' : initialData ? 'Salva Modifiche e Aggiorna Piano' : 'Crea Piano di Studio Intensivo'}
+          {loading ? 'Riorganizzazione IA...' : initialData ? 'Salva e Aggiorna Piano' : 'Crea Piano di Studio'}
         </button>
       </form>
     </div>
