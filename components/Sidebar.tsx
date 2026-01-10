@@ -31,7 +31,8 @@ const Sidebar: React.FC<SidebarProps> = ({
     { id: 'summary', label: 'Riassunto Rapido', icon: ICONS.Book },
     { id: 'questions', label: 'Cosa Chiedono?', icon: ICONS.Clipboard },
     { id: 'chat', label: 'Chiedi al Prof', icon: ICONS.Chat },
-    { id: 'recall', label: 'Mettiti alla Prova', icon: ICONS.Brain },
+    { id: 'recall', label: 'Flashcards', icon: ICONS.Brain },
+    { id: 'mcq', label: 'Quiz Multipli', icon: ICONS.Quiz },
     { id: 'simulation', label: 'Simula Orale', icon: ICONS.Chat },
     { id: 'mock', label: 'Simula Scritto', icon: ICONS.Upload },
   ];

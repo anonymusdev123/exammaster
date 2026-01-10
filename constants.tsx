@@ -12,6 +12,11 @@ export const ICONS = {
       <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 0 0 6-6c0-3.313-2.687-6-6-6s-6 2.687-6 6 2.687 6 6 6ZM12 12v.01M12 9v.01M12 15v.01M9 12v.01M15 12v.01" />
     </svg>
   ),
+  Quiz: (props: any) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 5.25h.008v.008H12v-.008Z" />
+    </svg>
+  ),
   Clipboard: (props: any) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .415.162.798.425 1.082.263.285.622.46 1.02.46s.757-.175 1.02-.46a1.505 1.505 0 0 0 .425-1.082c0-.231-.035-.454-.1-.664m-5.801 0A2.251 2.251 0 0 1 11.25 2.25h1.5a2.251 2.251 0 0 1 2.25 2.25m-5.801 0a48.503 48.503 0 0 1 1.123-.08m7.624 0a48.792 48.792 0 0 0-3.301 0m0 0a2.25 2.25 0 0 1-2.25 2.25h-1.5a2.25 2.25 0 0 1-2.25-2.25m0 0a48.474 48.474 0 0 1-1.123.08" />

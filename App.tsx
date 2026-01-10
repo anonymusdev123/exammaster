@@ -7,6 +7,7 @@ import Sidebar from './components/Sidebar';
 import SetupForm from './components/SetupForm';
 import SummaryView from './components/SummaryView';
 import QuizView from './components/QuizView';
+import MultipleChoiceView from './components/MultipleChoiceView';
 import SimulationView from './components/SimulationView';
 import ProfessorChatView from './components/ProfessorChatView';
 import PlanView from './components/PlanView';
@@ -31,6 +32,7 @@ const App: React.FC = () => {
   const [isUpdatingSession, setIsUpdatingSession] = useState(false);
   const [showSyncModal, setShowSyncModal] = useState(false);
   const [syncCodeInput, setSyncCodeInput] = useState('');
+  const [isExtraLoading, setIsExtraLoading] = useState(false);
 
   const getLocalDateStr = (d: Date = new Date()) => {
     const year = d.getFullYear();
@@ -132,10 +134,8 @@ const App: React.FC = () => {
         const user = JSON.parse(savedUserStr);
         setLoadingStep('Recupero Account Cloud...');
         
-        // Proviamo a caricare prima da IndexedDB locale
         let initialSessions = await StorageService.loadSessions();
         
-        // Se locale è vuoto, proviamo un pull aggressivo dal "cloud"
         if (initialSessions.length === 0) {
           setLoadingStep('Sincronizzazione dati tra dispositivi...');
           const cloudRes = await StorageService.pullFromCloud(user.email);
@@ -147,7 +147,7 @@ const App: React.FC = () => {
           user,
           sessions: rebalanceAllSessions(initialSessions),
           activeSessionId: initialSessions.length > 0 ? initialSessions[0].id : null,
-          isAddingNew: false, // Non forziamo più l'aggiunta automatica
+          isAddingNew: false, 
           isLoading: false
         }));
       } catch (err) {
@@ -204,6 +204,31 @@ const App: React.FC = () => {
     } catch (err) {
       alert("Codice non valido o corrotto.");
       setLoadingStep('');
+    }
+  };
+
+  const handleRegenerateMCQs = async (topic?: string) => {
+    const activeSess = state.sessions.find(s => s.id === state.activeSessionId);
+    if (!activeSess) return;
+
+    setIsExtraLoading(true);
+    try {
+      const service = new GeminiService();
+      const newMCQs = await service.generateAdditionalMCQs(activeSess.content, activeSess.course, topic);
+      
+      const updatedSessions = state.sessions.map(s => s.id === state.activeSessionId ? {
+        ...s,
+        data: {
+          ...s.data,
+          multipleChoice: topic ? [...(s.data.multipleChoice || []), ...newMCQs] : newMCQs
+        }
+      } : s);
+      
+      setState(prev => ({ ...prev, sessions: updatedSessions }));
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsExtraLoading(false);
     }
   };
 
@@ -360,6 +385,7 @@ const App: React.FC = () => {
                       switch (activeTab) {
                         case 'summary': return <SummaryView summary={activeSess.data.summary} />;
                         case 'recall': return <QuizView flashcards={activeSess.data.flashcards} onRegenerate={() => {}} isLoading={false} sessionContent={activeSess.content} />;
+                        case 'mcq': return <MultipleChoiceView questions={activeSess.data.multipleChoice || []} onRegenerate={handleRegenerateMCQs} isLoading={isExtraLoading} course={activeSess.course} />;
                         case 'simulation': return <SimulationView materialData={activeSess.data} fullContent={activeSess.content} />;
                         case 'chat': return <ProfessorChatView session={activeSess} onUpdateChat={(h) => handleUpdateChat(activeSess.id, h)} />;
                         case 'mock': return <MockExamView session={activeSess} onUpdateSession={(u) => setState(p => ({ ...p, sessions: p.sessions.map(s => s.id === u.id ? u : s) }))} />;

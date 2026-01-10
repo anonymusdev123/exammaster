@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { ExamType, DepthLevel, StudyMaterialData, ExamQuestion, Flashcard, MockExam, Importance } from "../types";
+import { ExamType, DepthLevel, StudyMaterialData, ExamQuestion, Flashcard, MockExam, Importance, MultipleChoiceQuestion } from "../types";
 import { getTemplate } from "../components/study_templates";
 
 export class GeminiService {
@@ -32,7 +32,6 @@ export class GeminiService {
     }
   }
 
-  // Funzione per generare un piano d'emergenza dai template se l'IA fallisce
   private getFallbackData(course: string, faculty: string, depth: DepthLevel): StudyMaterialData {
     const template = getTemplate(course) || {
       modules: [
@@ -44,8 +43,13 @@ export class GeminiService {
     return {
       summary: [{ title: "Focus Strategico", content: `Analisi di ${course}`, details: "Dati generati dal sistema di emergenza.", importance: Importance.HIGH }],
       questions: [{ question: `Quali sono i pilastri di ${course}?`, type: 'OPEN', modelAnswer: "Vedi materiali del corso.", gradingCriteria: ["Completezza"] }],
-      // Fix: Added difficulty to fallback flashcards to satisfy the Flashcard interface requirement.
       flashcards: [{ question: "Concetto chiave 1", answer: "Definizione standard dal manuale.", difficulty: 1 }],
+      multipleChoice: [{
+        question: `Qual è l'argomento centrale di ${course}?`,
+        options: ["Argomento A", "Argomento B", "Argomento C", "Argomento D"],
+        correctAnswerIndex: 0,
+        explanation: "L'argomento A è fondamentale per comprendere le basi della materia."
+      }],
       studyPlan: template.modules.map((m: any) => ({
         ...m,
         uid: this.generateUid(),
@@ -74,9 +78,17 @@ export class GeminiService {
       const truncatedText = text.length > maxChars ? text.substring(0, maxChars) : text;
       
       const prompt = `
-        RUOLO: Tutor Universitario. MATERIA: "${course}". DATA: ${examDate}.
-        REGOLE: Max 2 materie/giorno. 50% Teoria, 50% Pratica.
-        MATERIALI: ${truncatedText || "Usa curriculum standard."}
+        RUOLO: Tutor Universitario esperto in "${course}". 
+        OBIETTIVO: Analizzare i materiali forniti e generare un pacchetto completo di studio.
+        MATERIALI: ${truncatedText || "Usa curriculum standard di livello universitario."}
+        DATA ESAME: ${examDate}
+        
+        GENERA:
+        1. Riassunto strategico dei concetti chiave.
+        2. Domande probabili per l'esame.
+        3. Flashcards per active recall.
+        4. Quiz a risposta multipla (4 opzioni, 1 corretta, 1 spiegazione dettagliata).
+        5. Piano di studio giornaliero fino alla data dell'esame.
       `;
 
       const response = await this.callWithRetry(async (ai) => {
@@ -90,11 +102,11 @@ export class GeminiService {
               properties: {
                 summary: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { title: { type: Type.STRING }, content: { type: Type.STRING }, details: { type: Type.STRING }, importance: { type: Type.STRING, enum: ["HIGH", "MEDIUM", "LOW"] } } } },
                 questions: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { question: { type: Type.STRING }, type: { type: Type.STRING }, modelAnswer: { type: Type.STRING } } } },
-                // Fix: Included 'difficulty' in the Flashcard schema for the Gemini response.
                 flashcards: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { question: { type: Type.STRING }, answer: { type: Type.STRING }, difficulty: { type: Type.NUMBER } } } },
+                multipleChoice: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { question: { type: Type.STRING }, options: { type: Type.ARRAY, items: { type: Type.STRING } }, correctAnswerIndex: { type: Type.NUMBER }, explanation: { type: Type.STRING }, topic: { type: Type.STRING } } } },
                 studyPlan: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { day: { type: Type.NUMBER }, topics: { type: Type.ARRAY, items: { type: Type.STRING } }, tasks: { type: Type.ARRAY, items: { type: Type.STRING } }, priority: { type: Type.STRING, enum: ["HIGH", "MEDIUM", "LOW"] } } } }
               },
-              required: ["summary", "questions", "flashcards", "studyPlan"]
+              required: ["summary", "questions", "flashcards", "multipleChoice", "studyPlan"]
             },
             temperature: 0.1
           }
@@ -110,6 +122,39 @@ export class GeminiService {
     } catch (e) {
       console.warn("IA Fallita o Quota superata. Uso template di emergenza.");
       return this.getFallbackData(course, faculty, depth);
+    }
+  }
+
+  async generateAdditionalMCQs(content: string, course: string, topic?: string): Promise<MultipleChoiceQuestion[]> {
+    try {
+      return await this.callWithRetry(async (ai) => {
+        const response = await ai.models.generateContent({
+          model: "gemini-3-flash-preview",
+          contents: `Genera 5 quiz a risposta multipla (4 opzioni) per la materia ${course}. 
+          ${topic ? `FOCUS ARGOMENTO: "${topic}"` : ""}
+          CONTESTO: ${content.substring(0, 5000)}`,
+          config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  question: { type: Type.STRING },
+                  options: { type: Type.ARRAY, items: { type: Type.STRING } },
+                  correctAnswerIndex: { type: Type.NUMBER },
+                  explanation: { type: Type.STRING },
+                  topic: { type: Type.STRING }
+                },
+                required: ["question", "options", "correctAnswerIndex", "explanation"]
+              }
+            }
+          }
+        });
+        return JSON.parse(response.text || '[]');
+      });
+    } catch (e) {
+      return [];
     }
   }
 

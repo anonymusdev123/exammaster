@@ -39,6 +39,14 @@ export interface Flashcard {
   topic?: string;
 }
 
+export interface MultipleChoiceQuestion {
+  question: string;
+  options: string[];
+  correctAnswerIndex: number;
+  explanation: string;
+  topic?: string;
+}
+
 export interface ExamQuestion {
   question: string;
   type: 'OPEN' | 'SHORT' | 'CONNECT';
@@ -94,6 +102,7 @@ export interface StudyMaterialData {
   summary: SummaryUnit[];
   questions: ExamQuestion[];
   flashcards: Flashcard[];
+  multipleChoice?: MultipleChoiceQuestion[];
   studyPlan: StudyPlanDay[];
   mockExam?: MockExam;
   faculty: string;
