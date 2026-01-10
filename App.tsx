@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { AppState, ExamSession, Importance, StudyPlanDay, User } from './types';
+import { AppState, ExamSession, Importance, StudyPlanDay, User, StudyMaterialData } from './types';
 import { GeminiService } from './services/geminiService';
 import { StorageService } from './services/storageService';
 import Sidebar from './components/Sidebar';
@@ -130,7 +130,6 @@ const App: React.FC = () => {
         const user = JSON.parse(savedUserStr);
         setLoadingStep('Sincronizzazione Account...');
         
-        // Safety timeout per il pull cloud
         const cloudPullPromise = StorageService.pullFromCloud(user.email);
         const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 4000));
         
@@ -192,7 +191,7 @@ const App: React.FC = () => {
     
     try {
       const service = new GeminiService();
-      let newData;
+      let newData: StudyMaterialData;
       
       if (isUpdatingSession && state.activeSessionId) {
         const activeSess = state.sessions.find(s => s.id === state.activeSessionId)!;
