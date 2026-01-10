@@ -29,6 +29,8 @@ const App: React.FC = () => {
   const [isGlobalPlan, setIsGlobalPlan] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isUpdatingSession, setIsUpdatingSession] = useState(false);
+  const [showSyncModal, setShowSyncModal] = useState(false);
+  const [syncCodeInput, setSyncCodeInput] = useState('');
 
   const getLocalDateStr = (d: Date = new Date()) => {
     const year = d.getFullYear();
@@ -128,17 +130,16 @@ const App: React.FC = () => {
         }
 
         const user = JSON.parse(savedUserStr);
-        setLoadingStep('Sincronizzazione Account...');
+        setLoadingStep('Recupero Account Cloud...');
         
-        const cloudPullPromise = StorageService.pullFromCloud(user.email);
-        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 4000));
+        // Proviamo a caricare prima da IndexedDB locale
+        let initialSessions = await StorageService.loadSessions();
         
-        let initialSessions: ExamSession[] = [];
-        try {
-          const res = await Promise.race([cloudPullPromise, timeoutPromise]);
-          initialSessions = (res as ExamSession[]) || await StorageService.loadSessions();
-        } catch (e) {
-          initialSessions = await StorageService.loadSessions();
+        // Se locale è vuoto, proviamo un pull aggressivo dal "cloud"
+        if (initialSessions.length === 0) {
+          setLoadingStep('Sincronizzazione dati tra dispositivi...');
+          const cloudRes = await StorageService.pullFromCloud(user.email);
+          if (cloudRes) initialSessions = cloudRes;
         }
         
         setState(prev => ({
@@ -146,7 +147,7 @@ const App: React.FC = () => {
           user,
           sessions: rebalanceAllSessions(initialSessions),
           activeSessionId: initialSessions.length > 0 ? initialSessions[0].id : null,
-          isAddingNew: initialSessions.length === 0, 
+          isAddingNew: false, // Non forziamo più l'aggiunta automatica
           isLoading: false
         }));
       } catch (err) {
@@ -172,7 +173,7 @@ const App: React.FC = () => {
       user, 
       sessions: finalSessions,
       activeSessionId: finalSessions.length > 0 ? finalSessions[0].id : null,
-      isAddingNew: finalSessions.length === 0,
+      isAddingNew: false, 
       isLoading: false 
     }));
     setActiveTab('summary');
@@ -183,6 +184,27 @@ const App: React.FC = () => {
     setState({
       user: null, sessions: [], activeSessionId: null, isLoading: false, isAddingNew: false, error: null,
     });
+  };
+
+  const handleManualSync = async () => {
+    if (!syncCodeInput.trim()) return;
+    try {
+      setLoadingStep('Sincronizzazione Codice...');
+      const imported = await StorageService.importFromTransferCode(syncCodeInput.trim());
+      const balanced = rebalanceAllSessions(imported);
+      setState(prev => ({
+        ...prev,
+        sessions: balanced,
+        activeSessionId: balanced.length > 0 ? balanced[0].id : null,
+        isLoading: false
+      }));
+      setShowSyncModal(false);
+      setSyncCodeInput('');
+      setLoadingStep('');
+    } catch (err) {
+      alert("Codice non valido o corrotto.");
+      setLoadingStep('');
+    }
   };
 
   const handleAnalyze = async (config: any) => {
@@ -268,7 +290,7 @@ const App: React.FC = () => {
                   <ICONS.Brain className="absolute inset-0 m-auto w-10 h-10 text-blue-600" />
                 </div>
                 <h3 className="text-2xl font-black uppercase text-slate-900 italic tracking-tighter mb-2">{loadingStep || 'Caricamento Cloud...'}</h3>
-                <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em]">Tutti i tuoi dati sono al sicuro</p>
+                <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em]">Sincronizzando i tuoi dati tra i dispositivi</p>
               </div>
             </div>
         ) : state.isAddingNew || isUpdatingSession ? (
@@ -295,7 +317,7 @@ const App: React.FC = () => {
                 <button onClick={() => setIsSidebarOpen(true)} className="lg:hidden p-3 bg-white rounded-2xl shadow-sm text-blue-600"><ICONS.Menu className="w-6 h-6" /></button>
                 <div className="truncate">
                   <h1 className="text-lg font-black text-slate-900 truncate tracking-tight">
-                    {isGlobalPlan ? 'Il Mio Calendario' : (activeSess?.course || 'Area Studio')}
+                    {isGlobalPlan ? 'Il Mio Calendario' : (activeSess?.course || 'Dashboard Studente')}
                   </h1>
                 </div>
               </div>
@@ -360,20 +382,81 @@ const App: React.FC = () => {
                     })()}
                   </div>
                 ) : (
-                  <div className="text-center py-20 flex flex-col items-center gap-8">
-                     <div className="w-32 h-32 bg-slate-100 rounded-[3rem] flex items-center justify-center text-slate-300">
-                       <ICONS.Book className="w-16 h-16" />
+                  <div className="text-center py-20 flex flex-col items-center gap-12 max-w-2xl mx-auto animate-fadeIn">
+                     <div className="relative">
+                       <div className="w-40 h-40 bg-blue-600/10 rounded-[4rem] flex items-center justify-center text-blue-600">
+                         <ICONS.Brain className="w-20 h-20" />
+                       </div>
+                       <div className="absolute -bottom-4 -right-4 w-12 h-12 bg-emerald-500 rounded-2xl flex items-center justify-center text-white shadow-lg border-4 border-white">
+                         <ICONS.Plus className="w-6 h-6" />
+                       </div>
                      </div>
-                     <div className="space-y-2">
-                       <h2 className="text-3xl font-black text-slate-900 tracking-tight">Pronto per il Successo? 🚀</h2>
-                       <p className="text-slate-400 font-medium">I tuoi amici hanno i loro account, tu hai il tuo. La tua strada è unica.</p>
+                     <div className="space-y-4">
+                       <h2 className="text-4xl font-black text-slate-900 tracking-tighter">Benvenuto in ExamMaster!</h2>
+                       <p className="text-slate-500 text-lg font-medium leading-relaxed">
+                         Il tuo spazio di studio è pronto. Se avevi già dei dati sul telefono o su un altro computer, sincronizzali ora, altrimenti crea il tuo primo piano.
+                       </p>
                      </div>
-                     <button onClick={() => setState(p => ({...p, isAddingNew: true}))} className="px-12 py-5 bg-blue-600 text-white rounded-[2rem] font-black uppercase tracking-widest shadow-2xl shadow-blue-500/30 hover:bg-blue-700 transition-all hover:scale-105 active:scale-95">Pianifica Ora</button>
+                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full">
+                       <button 
+                        onClick={() => setState(p => ({...p, isAddingNew: true}))} 
+                        className="flex flex-col items-center gap-4 p-8 bg-white border-2 border-slate-100 rounded-[3rem] hover:border-blue-600 hover:shadow-2xl transition-all group"
+                       >
+                         <div className="w-14 h-14 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-all">
+                           <ICONS.Plus className="w-8 h-8" />
+                         </div>
+                         <div className="text-center">
+                           <p className="font-black uppercase tracking-widest text-[10px] text-blue-600 mb-1">Inizia da zero</p>
+                           <p className="font-bold text-slate-900">Nuova Materia</p>
+                         </div>
+                       </button>
+
+                       <button 
+                        onClick={() => setShowSyncModal(true)} 
+                        className="flex flex-col items-center gap-4 p-8 bg-white border-2 border-slate-100 rounded-[3rem] hover:border-emerald-500 hover:shadow-2xl transition-all group"
+                       >
+                         <div className="w-14 h-14 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center group-hover:bg-emerald-500 group-hover:text-white transition-all">
+                           <ICONS.Clipboard className="w-8 h-8" />
+                         </div>
+                         <div className="text-center">
+                           <p className="font-black uppercase tracking-widest text-[10px] text-emerald-600 mb-1">Recupera dati</p>
+                           <p className="font-bold text-slate-900">Usa Codice Sync</p>
+                         </div>
+                       </button>
+                     </div>
                   </div>
                 )}
               </div>
             </div>
           </>
+        )}
+
+        {showSyncModal && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xl z-[100] flex items-center justify-center p-6 animate-fadeIn">
+            <div className="bg-white w-full max-w-lg rounded-[3.5rem] p-12 shadow-2xl relative overflow-hidden">
+              <button onClick={() => setShowSyncModal(false)} className="absolute top-8 right-8 text-slate-400 hover:text-slate-600"><ICONS.XMark className="w-6 h-6" /></button>
+              <div className="text-center mb-8">
+                <div className="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-[2rem] flex items-center justify-center mx-auto mb-4">
+                  <ICONS.Clipboard className="w-8 h-8" />
+                </div>
+                <h3 className="text-2xl font-black text-slate-900 tracking-tight">Sincronizzazione Dispositivi</h3>
+                <p className="text-slate-500 text-sm font-medium mt-2">Incolla il codice generato sull'altro dispositivo per caricare istantaneamente tutto il tuo studio.</p>
+              </div>
+              <textarea 
+                value={syncCodeInput}
+                onChange={(e) => setSyncCodeInput(e.target.value)}
+                placeholder="Incolla il codice Base64 qui..."
+                className="w-full h-40 p-6 bg-slate-50 border-2 border-slate-100 rounded-[2rem] text-xs font-mono outline-none focus:border-emerald-500 transition-all resize-none mb-6"
+              />
+              <button 
+                onClick={handleManualSync}
+                disabled={!syncCodeInput.trim()}
+                className="w-full py-5 bg-emerald-600 text-white rounded-[2rem] font-black uppercase tracking-widest shadow-xl shadow-emerald-500/20 hover:bg-emerald-700 disabled:opacity-50 transition-all"
+              >
+                Importa Sessioni
+              </button>
+            </div>
+          </div>
         )}
       </main>
     </div>
