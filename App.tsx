@@ -40,9 +40,8 @@ const App: React.FC = () => {
   const todayStr = useMemo(() => getLocalDateStr(), []);
 
   const rebalanceAllSessions = useCallback((allSessions: ExamSession[]): ExamSession[] => {
-    if (allSessions.length === 0) return [];
+    if (!allSessions || allSessions.length === 0) return [];
     
-    // Ordine cronologico esami
     const sortedSessions = [...allSessions].sort((a, b) => 
       new Date(a.examDate).getTime() - new Date(b.examDate).getTime()
     );
@@ -50,7 +49,6 @@ const App: React.FC = () => {
     const allExamDates = new Set(sortedSessions.filter(s => !s.isPassed).map(s => s.examDate));
     const daySubjectOccupancy: Record<string, Set<string>> = {};
 
-    // 1. Blocca i moduli esistenti e conta le materie per giorno
     sortedSessions.forEach(s => {
       s.data.studyPlan.forEach(m => {
         if (m.assignedDate && (m.isManuallyPlaced || m.assignedDate < todayStr || m.completedTasks?.some(v => v))) {
@@ -82,7 +80,6 @@ const App: React.FC = () => {
         const subjectsToday = daySubjectOccupancy[dStr] || new Set();
         const isDayOff = session.dayOffs?.includes(dStr);
         
-        // REGOLE INVIOLABILI: Max 2 materie diverse
         const hasSlot = !isAnyExamDay && !isDayOff && (subjectsToday.size < 2 || subjectsToday.has(session.id));
         
         if (hasSlot) {
@@ -133,15 +130,24 @@ const App: React.FC = () => {
         const user = JSON.parse(savedUserStr);
         setLoadingStep('Sincronizzazione Account...');
         
-        const cloudSessions = await StorageService.pullFromCloud(user.email);
-        const savedSessions = cloudSessions || await StorageService.loadSessions();
+        // Safety timeout per il pull cloud
+        const cloudPullPromise = StorageService.pullFromCloud(user.email);
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 4000));
+        
+        let initialSessions: ExamSession[] = [];
+        try {
+          const res = await Promise.race([cloudPullPromise, timeoutPromise]);
+          initialSessions = (res as ExamSession[]) || await StorageService.loadSessions();
+        } catch (e) {
+          initialSessions = await StorageService.loadSessions();
+        }
         
         setState(prev => ({
           ...prev, 
           user,
-          sessions: rebalanceAllSessions(savedSessions),
-          activeSessionId: savedSessions.length > 0 ? savedSessions[0].id : null,
-          isAddingNew: savedSessions.length === 0, 
+          sessions: rebalanceAllSessions(initialSessions),
+          activeSessionId: initialSessions.length > 0 ? initialSessions[0].id : null,
+          isAddingNew: initialSessions.length === 0, 
           isLoading: false
         }));
       } catch (err) {
@@ -221,7 +227,7 @@ const App: React.FC = () => {
       }
       setActiveTab('summary');
     } catch (err: any) {
-      setState(prev => ({ ...prev, isLoading: false, error: "Errore. Riprova con meno testo." }));
+      setState(prev => ({ ...prev, isLoading: false, error: "Errore. Riprova con meno testo o attendi un istante." }));
     }
     setLoadingStep('');
   };

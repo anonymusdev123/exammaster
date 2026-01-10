@@ -44,7 +44,8 @@ export class GeminiService {
     return {
       summary: [{ title: "Focus Strategico", content: `Analisi di ${course}`, details: "Dati generati dal sistema di emergenza.", importance: Importance.HIGH }],
       questions: [{ question: `Quali sono i pilastri di ${course}?`, type: 'OPEN', modelAnswer: "Vedi materiali del corso.", gradingCriteria: ["Completezza"] }],
-      flashcards: [{ question: "Concetto chiave 1", answer: "Definizione standard dal manuale." }],
+      // Fix: Added difficulty to fallback flashcards to satisfy the Flashcard interface requirement.
+      flashcards: [{ question: "Concetto chiave 1", answer: "Definizione standard dal manuale.", difficulty: 1 }],
       studyPlan: template.modules.map((m: any) => ({
         ...m,
         uid: this.generateUid(),
@@ -89,7 +90,8 @@ export class GeminiService {
               properties: {
                 summary: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { title: { type: Type.STRING }, content: { type: Type.STRING }, details: { type: Type.STRING }, importance: { type: Type.STRING, enum: ["HIGH", "MEDIUM", "LOW"] } } } },
                 questions: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { question: { type: Type.STRING }, type: { type: Type.STRING }, modelAnswer: { type: Type.STRING } } } },
-                flashcards: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { question: { type: Type.STRING }, answer: { type: Type.STRING } } } },
+                // Fix: Included 'difficulty' in the Flashcard schema for the Gemini response.
+                flashcards: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { question: { type: Type.STRING }, answer: { type: Type.STRING }, difficulty: { type: Type.NUMBER } } } },
                 studyPlan: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { day: { type: Type.NUMBER }, topics: { type: Type.ARRAY, items: { type: Type.STRING } }, tasks: { type: Type.ARRAY, items: { type: Type.STRING } }, priority: { type: Type.STRING, enum: ["HIGH", "MEDIUM", "LOW"] } } } }
               },
               required: ["summary", "questions", "flashcards", "studyPlan"]

@@ -1,4 +1,5 @@
-import { Importance } from './types';
+
+import { Importance } from '../types';
 
 // Template piani studio per materie comuni - CARICAMENTO ISTANTANEO
 export const STUDY_TEMPLATES: Record<string, any> = {
@@ -65,16 +66,13 @@ export const STUDY_TEMPLATES: Record<string, any> = {
 };
 
 export function getTemplate(courseName: string) {
-  // Cerca match parziale case-insensitive
   const normalizedCourse = courseName.toLowerCase();
-  
   for (const [templateName, template] of Object.entries(STUDY_TEMPLATES)) {
     if (normalizedCourse.includes(templateName.toLowerCase()) || 
         templateName.toLowerCase().includes(normalizedCourse)) {
       return template;
     }
   }
-  
   return null;
 }
 
