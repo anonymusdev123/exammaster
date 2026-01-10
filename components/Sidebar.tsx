@@ -25,7 +25,7 @@ interface SidebarProps {
 const Sidebar: React.FC<SidebarProps> = ({ 
   activeTab, setActiveTab, sessions, activeSessionId, onSelectSession, onAddNew, onShowGlobalPlan, onUpdateMaterials, onDeleteSession, onMarkAsPassed, isGlobalPlan, isOpen, onClose, user, onLogout 
 }) => {
-  const [copyStatus, setCopyStatus] = useState<'IDLE' | 'COPIED'>('IDLE');
+  const [copyStatus, setCopyStatus] = useState<'IDLE' | 'COPIED' | 'ERROR'>('IDLE');
 
   const menuItems = [
     { id: 'summary', label: 'Riassunto Rapido', icon: ICONS.Book },
@@ -40,12 +40,14 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   const handleCopySyncCode = async () => {
     try {
+      setCopyStatus('IDLE');
       const code = await StorageService.generateTransferCode();
       await navigator.clipboard.writeText(code);
       setCopyStatus('COPIED');
       setTimeout(() => setCopyStatus('IDLE'), 2000);
     } catch (err) {
-      alert("Errore nella generazione del codice");
+      setCopyStatus('ERROR');
+      setTimeout(() => setCopyStatus('IDLE'), 3000);
     }
   };
 
@@ -176,10 +178,14 @@ const Sidebar: React.FC<SidebarProps> = ({
              </div>
              <button 
                 onClick={handleCopySyncCode}
-                className={`w-full py-2.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 border-2 ${copyStatus === 'COPIED' ? 'bg-emerald-500 border-emerald-500 text-white' : 'bg-white border-blue-100 text-blue-600 hover:border-blue-300 shadow-sm'}`}
+                className={`w-full py-2.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 border-2 ${
+                  copyStatus === 'COPIED' ? 'bg-emerald-500 border-emerald-500 text-white' : 
+                  copyStatus === 'ERROR' ? 'bg-rose-500 border-rose-500 text-white' : 
+                  'bg-white border-blue-100 text-blue-600 hover:border-blue-300 shadow-sm'
+                }`}
              >
                 <ICONS.Clipboard className="w-3 h-3" />
-                {copyStatus === 'COPIED' ? 'CODICE COPIATO!' : 'COPIA CODICE SYNC'}
+                {copyStatus === 'COPIED' ? 'CODICE COPIATO!' : copyStatus === 'ERROR' ? 'ERRORE DATI TROPPO GRANDI' : 'COPIA CODICE SYNC'}
              </button>
              <p className="text-[7px] text-slate-400 text-center font-medium italic px-2 leading-tight">Usa questo codice per caricare i tuoi dati su un altro computer o dispositivo.</p>
            </div>

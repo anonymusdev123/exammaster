@@ -53,29 +53,53 @@ export class StorageService {
     });
   }
 
-  // Funzione per generare un codice di trasferimento per altri dispositivi
+  /**
+   * Genera un codice Base64 robusto che supporta UTF-8 (caratteri speciali)
+   */
   static async generateTransferCode(): Promise<string> {
-    const sessions = await this.loadSessions();
-    const data = {
-      sessions,
-      exportedAt: Date.now(),
-      v: "1.0"
-    };
-    // Codifica in Base64 per facilitare il copia-incolla
-    return btoa(unescape(encodeURIComponent(JSON.stringify(data))));
+    try {
+      const sessions = await this.loadSessions();
+      const data = {
+        sessions,
+        exportedAt: Date.now(),
+        v: "1.1"
+      };
+      
+      const json = JSON.stringify(data);
+      const bytes = new TextEncoder().encode(json);
+      let binString = "";
+      // Convertiamo i bytes in stringa binaria in modo sicuro per btoa
+      for (let i = 0; i < bytes.length; i++) {
+        binString += String.fromCharCode(bytes[i]);
+      }
+      return btoa(binString);
+    } catch (e) {
+      console.error("Errore generazione codice sync:", e);
+      throw new Error("Impossibile generare il codice. Forse i dati sono troppo grandi.");
+    }
   }
 
-  // Funzione per importare dati da un altro dispositivo
+  /**
+   * Importa dati da un codice Base64 gestendo correttamente UTF-8
+   */
   static async importFromTransferCode(code: string): Promise<ExamSession[]> {
     try {
-      const decoded = JSON.parse(decodeURIComponent(escape(atob(code))));
-      if (decoded.sessions) {
+      const binString = atob(code.trim().replace(/\s/g, ''));
+      const bytes = new Uint8Array(binString.length);
+      for (let i = 0; i < binString.length; i++) {
+        bytes[i] = binString.charCodeAt(i);
+      }
+      const json = new TextDecoder().decode(bytes);
+      const decoded = JSON.parse(json);
+      
+      if (decoded.sessions && Array.isArray(decoded.sessions)) {
         await this.saveSessions(decoded.sessions);
         return decoded.sessions;
       }
-      throw new Error("Formato codice non valido");
+      throw new Error("Formato sessioni non valido");
     } catch (e) {
-      throw new Error("Codice di sincronizzazione non valido o corrotto");
+      console.error("Errore importazione codice sync:", e);
+      throw new Error("Codice di sincronizzazione non valido o corrotto. Assicurati di averlo copiato tutto.");
     }
   }
 
