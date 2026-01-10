@@ -216,6 +216,11 @@ const App: React.FC = () => {
       const service = new GeminiService();
       const newMCQs = await service.generateAdditionalMCQs(activeSess.content, activeSess.course, topic);
       
+      if (!newMCQs || newMCQs.length === 0) {
+        alert("L'IA non è riuscita a generare i quiz. Riprova con un argomento diverso.");
+        return;
+      }
+
       const updatedSessions = state.sessions.map(s => s.id === state.activeSessionId ? {
         ...s,
         data: {
@@ -225,8 +230,9 @@ const App: React.FC = () => {
       } : s);
       
       setState(prev => ({ ...prev, sessions: updatedSessions }));
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      alert("Errore durante la generazione dei quiz. Il sistema potrebbe essere sovraccarico.");
     } finally {
       setIsExtraLoading(false);
     }
