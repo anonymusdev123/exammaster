@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { AppState, ExamSession, Importance, StudyPlanDay, User } from './types';
 import { GeminiService } from './services/geminiService';
@@ -39,7 +40,9 @@ const App: React.FC = () => {
   const todayStr = useMemo(() => getLocalDateStr(), []);
 
   const rebalanceAllSessions = useCallback((allSessions: ExamSession[]): ExamSession[] => {
-    // 1. Ordina le sessioni per data esame (priorità a chi scade prima)
+    if (allSessions.length === 0) return [];
+    
+    // Ordine cronologico esami
     const sortedSessions = [...allSessions].sort((a, b) => 
       new Date(a.examDate).getTime() - new Date(b.examDate).getTime()
     );
@@ -47,7 +50,7 @@ const App: React.FC = () => {
     const allExamDates = new Set(sortedSessions.filter(s => !s.isPassed).map(s => s.examDate));
     const daySubjectOccupancy: Record<string, Set<string>> = {};
 
-    // 2. Registra i blocchi fissi (manuali o passati)
+    // 1. Blocca i moduli esistenti e conta le materie per giorno
     sortedSessions.forEach(s => {
       s.data.studyPlan.forEach(m => {
         if (m.assignedDate && (m.isManuallyPlaced || m.assignedDate < todayStr || m.completedTasks?.some(v => v))) {
@@ -71,20 +74,22 @@ const App: React.FC = () => {
 
       const availableDates: string[] = [];
       let cursor = new Date(todayStr);
-      while (cursor < examDateObj) {
+      let safetyCount = 0;
+      
+      while (cursor < examDateObj && safetyCount < 180) {
         const dStr = getLocalDateStr(cursor);
         const isAnyExamDay = allExamDates.has(dStr);
         const subjectsToday = daySubjectOccupancy[dStr] || new Set();
         const isDayOff = session.dayOffs?.includes(dStr);
         
-        // REGOLA INVIOLABILE: Max 2 materie diverse per giorno
-        const canAddSubject = !isAnyExamDay && !isDayOff && subjectsToday.size < 2;
-        const alreadyHasThisSubject = subjectsToday.has(session.id);
+        // REGOLE INVIOLABILI: Max 2 materie diverse
+        const hasSlot = !isAnyExamDay && !isDayOff && (subjectsToday.size < 2 || subjectsToday.has(session.id));
         
-        if (canAddSubject || alreadyHasThisSubject) {
+        if (hasSlot) {
           availableDates.push(dStr);
         }
         cursor.setDate(cursor.getDate() + 1);
+        safetyCount++;
       }
 
       const finalPlan: StudyPlanDay[] = [...lockedModules];
@@ -93,139 +98,53 @@ const App: React.FC = () => {
         floatingModules.forEach((m, idx) => {
           const dateIdx = Math.min(Math.floor((idx * availableDates.length) / floatingModules.length), availableDates.length - 1);
           const chosenDate = availableDates[dateIdx];
-          // IMPORTANTE: Preserva completedTasks o inizializza con false
-          const completedTasks = m.completedTasks || m.tasks.map(() => false);
-          finalPlan.push({ ...m, assignedDate: chosenDate, isManuallyPlaced: false, completedTasks });
+          finalPlan.push({ ...m, assignedDate: chosenDate, isManuallyPlaced: false });
+          
           if (!daySubjectOccupancy[chosenDate]) daySubjectOccupancy[chosenDate] = new Set();
           daySubjectOccupancy[chosenDate].add(session.id);
         });
       }
 
-      // 3. Gestione Sim d'Esame (Giorno prima dell'esame se libero)
       const dayBeforeExam = new Date(session.examDate);
       dayBeforeExam.setDate(dayBeforeExam.getDate() - 1);
       const dbStr = getLocalDateStr(dayBeforeExam);
       
-      if (!finalPlan.find(p => p.topics[0] === "SIMULAZIONE") && !allExamDates.has(dbStr)) {
+      if (!finalPlan.find(p => p.topics[0] === "SIMULAZIONE") && !allExamDates.has(dbStr) && dbStr >= todayStr) {
         finalPlan.push({
           uid: `auto-sim-${session.id}`, day: 9999, topics: ["SIMULAZIONE"],
-          tasks: ["[PRATICA] Simulazione d'Esame integrale - 3h", "[PRATICA] Analisi errori finale - 2h"], 
-          priority: Importance.HIGH, assignedDate: dbStr, completedTasks: [false, false], isManuallyPlaced: false
+          tasks: ["[PRATICA] Simulazione d'Esame integrale - 3h", "[PRATICA] Analisi finale - 2h"], 
+          priority: Importance.HIGH, assignedDate: dbStr, completedTasks: [false, false]
         });
-        if (!daySubjectOccupancy[dbStr]) daySubjectOccupancy[dbStr] = new Set();
-        daySubjectOccupancy[dbStr].add(session.id);
       }
       
       return { ...session, data: { ...session.data, studyPlan: finalPlan } };
     });
   }, [todayStr]);
 
-  const assignDatesToSession = useCallback((newSession: ExamSession, existingSessions: ExamSession[]): ExamSession => {
-    const examDateObj = new Date(newSession.examDate);
-    const allExamDates = new Set(existingSessions.filter(s => !s.isPassed).map(s => s.examDate));
-    allExamDates.add(newSession.examDate);
-    
-    // Mappa delle materie già assegnate per giorno
-    const dayOccupancy: Record<string, Set<string>> = {};
-    
-    existingSessions.forEach(s => {
-      if (s.isPassed) return;
-      s.data.studyPlan.forEach(m => {
-        if (m.assignedDate) {
-          if (!dayOccupancy[m.assignedDate]) dayOccupancy[m.assignedDate] = new Set();
-          dayOccupancy[m.assignedDate].add(s.id);
-        }
-      });
-    });
-    
-    // Trova date disponibili rispettando max 2 materie/giorno
-    const availableDates: string[] = [];
-    let cursor = new Date(todayStr);
-    
-    while (cursor < examDateObj && availableDates.length < 50) {
-      const dStr = getLocalDateStr(cursor);
-      const isExamDay = allExamDates.has(dStr);
-      const subjectsCount = (dayOccupancy[dStr] || new Set()).size;
-      
-      // Può aggiungere se: non è esame E (ha meno di 2 materie OPPURE ha già questa materia)
-      if (!isExamDay && subjectsCount < 2) {
-        availableDates.push(dStr);
-      }
-      
-      cursor.setDate(cursor.getDate() + 1);
-    }
-    
-    // SPALMA i moduli uniformemente - MAX 1 MODULO PER GIORNO
-    const plan = newSession.data.studyPlan.map((m, idx) => {
-      // Prendi un giorno ogni N giorni per evitare raggruppamenti
-      const dateIdx = Math.min(idx, availableDates.length - 1);
-      const assignedDate = availableDates[dateIdx] || todayStr;
-      
-      // Segna questo giorno come occupato
-      if (!dayOccupancy[assignedDate]) dayOccupancy[assignedDate] = new Set();
-      dayOccupancy[assignedDate].add(newSession.id);
-      
-      return { ...m, assignedDate };
-    });
-    
-    return { ...newSession, data: { ...newSession.data, studyPlan: plan } };
-  }, [todayStr]);
-
-  const handleManualRebalance = useCallback(() => {
-    setState(prev => ({
-      ...prev,
-      sessions: rebalanceAllSessions(prev.sessions)
-    }));
-  }, [rebalanceAllSessions]);
-
-  const handleToggleTask = useCallback(async (sessionId: string, moduleUid: string, taskIdx: number) => {
-    console.log('🔄 Toggle Task:', { sessionId, moduleUid, taskIdx });
-    setState(prev => {
-      const updated = prev.sessions.map(s => {
-        if (s.id !== sessionId) return s;
-        const plan = s.data.studyPlan.map(m => {
-          if (m.uid !== moduleUid) return m;
-          const currentCompleted = m.completedTasks || Array(m.tasks.length).fill(false);
-          const newCompleted = [...currentCompleted];
-          newCompleted[taskIdx] = !newCompleted[taskIdx];
-          console.log('✅ Task toggled:', { before: currentCompleted[taskIdx], after: newCompleted[taskIdx] });
-          return { ...m, completedTasks: newCompleted };
-        });
-        return { ...s, data: { ...s.data, studyPlan: plan } };
-      });
-      // Salva immediatamente in background
-      Promise.all([
-        StorageService.saveSessions(updated),
-        prev.user ? StorageService.pushToCloud(prev.user.email, updated) : Promise.resolve()
-      ]).catch(err => console.error('Save error:', err));
-      
-      return { ...prev, sessions: updated };
-    });
-  }, []);
-
   useEffect(() => {
     const init = async () => {
       try {
-        const savedUser = localStorage.getItem('em_user');
-        if (savedUser) {
-          const user = JSON.parse(savedUser);
-          setLoadingStep('Recupero dati multi-dispositivo...');
-          
-          const cloudSessions = await StorageService.pullFromCloud(user.email);
-          const savedSessions = cloudSessions || await StorageService.loadSessions();
-          
-          setState(prev => ({
-            ...prev, 
-            user,
-            sessions: rebalanceAllSessions(savedSessions),
-            activeSessionId: savedSessions.length > 0 ? savedSessions[0].id : null,
-            isAddingNew: savedSessions.length === 0, 
-            isLoading: false
-          }));
-        } else {
+        const savedUserStr = localStorage.getItem('em_user');
+        if (!savedUserStr) {
           setState(prev => ({ ...prev, isLoading: false }));
+          return;
         }
-      } catch (e) {
+
+        const user = JSON.parse(savedUserStr);
+        setLoadingStep('Sincronizzazione Account...');
+        
+        const cloudSessions = await StorageService.pullFromCloud(user.email);
+        const savedSessions = cloudSessions || await StorageService.loadSessions();
+        
+        setState(prev => ({
+          ...prev, 
+          user,
+          sessions: rebalanceAllSessions(savedSessions),
+          activeSessionId: savedSessions.length > 0 ? savedSessions[0].id : null,
+          isAddingNew: savedSessions.length === 0, 
+          isLoading: false
+        }));
+      } catch (err) {
         setState(prev => ({ ...prev, isLoading: false }));
       }
     };
@@ -235,110 +154,81 @@ const App: React.FC = () => {
   useEffect(() => {
     if (state.isLoading || !state.user) return;
     const handler = setTimeout(async () => {
-      // Salvataggio asincrono - non blocca l'UI
-      StorageService.saveSessions(state.sessions).catch(e => console.error('Save error:', e));
-      StorageService.pushToCloud(state.user!.email, state.sessions).catch(e => console.error('Cloud error:', e));
-    }, 1000);
+      await StorageService.saveSessions(state.sessions);
+      await StorageService.pushToCloud(state.user!.email, state.sessions);
+    }, 1500);
     return () => clearTimeout(handler);
   }, [state.sessions, state.isLoading, state.user]);
 
   const handleAuthSuccess = (user: User, cloudSessions: ExamSession[] | null) => {
+    const finalSessions = rebalanceAllSessions(cloudSessions || []);
     setState(prev => ({ 
       ...prev, 
       user, 
-      sessions: rebalanceAllSessions(cloudSessions || []),
-      activeSessionId: cloudSessions && cloudSessions.length > 0 ? cloudSessions[0].id : null,
-      isAddingNew: !cloudSessions || cloudSessions.length === 0,
+      sessions: finalSessions,
+      activeSessionId: finalSessions.length > 0 ? finalSessions[0].id : null,
+      isAddingNew: finalSessions.length === 0,
       isLoading: false 
     }));
     setActiveTab('summary');
-    setIsGlobalPlan(true);
   };
 
   const handleLogout = () => {
     localStorage.removeItem('em_user');
     setState({
-      user: null,
-      sessions: [],
-      activeSessionId: null,
-      isLoading: false,
-      isAddingNew: false,
-      error: null,
+      user: null, sessions: [], activeSessionId: null, isLoading: false, isAddingNew: false, error: null,
     });
   };
 
-  const handleMoveModule = useCallback((sessionId: string, moduleUid: string, newDate: string) => {
-    setState(prev => {
-      const updated = prev.sessions.map(s => {
-        if (s.id !== sessionId) return s;
-        const plan = s.data.studyPlan.map(m => m.uid === moduleUid ? { ...m, assignedDate: newDate, isManuallyPlaced: true } : m);
-        return { ...s, data: { ...s.data, studyPlan: plan } };
-      });
-      const rebalanced = rebalanceAllSessions(updated);
-      // Salva immediatamente dopo lo spostamento
-      StorageService.saveSessions(rebalanced);
-      if (prev.user) {
-        StorageService.pushToCloud(prev.user.email, rebalanced);
-      }
-      return { ...prev, sessions: rebalanced };
-    });
-  }, [rebalanceAllSessions]);
-
   const handleAnalyze = async (config: any) => {
     setState(prev => ({ ...prev, isLoading: true, error: null }));
-    setLoadingStep('Analisi IA in corso...');
+    setLoadingStep('Ottimizzazione Studio...');
+    
     try {
       const service = new GeminiService();
+      let newData;
+      
       if (isUpdatingSession && state.activeSessionId) {
         const activeSess = state.sessions.find(s => s.id === state.activeSessionId)!;
-        const baseContent = activeSess.content.substring(0, 30000);
+        const baseContent = activeSess.content.substring(0, 10000);
         const newContent = config.content && config.content.trim().length > 20 ? `${baseContent}\n\n[UPDATE]\n${config.content}` : activeSess.content;
-        setLoadingStep('Generazione piano adattivo...');
-        const updatedData = await service.analyzeMaterials(newContent, config.faculty, config.course, config.examType, config.depth, config.examDate);
+        
+        setLoadingStep('Aggiornamento Piano...');
+        newData = await service.analyzeMaterials(newContent, config.faculty, config.course, config.examType, config.depth, config.examDate);
+        
         const updatedSessions = state.sessions.map(s => s.id === state.activeSessionId ? {
           ...s, examDate: config.examDate, examType: config.examType, depth: config.depth,
-          content: newContent, data: updatedData, lastUpdateDate: getLocalDateStr()
+          content: newContent, data: newData, lastUpdateDate: getLocalDateStr()
         } : s);
-        // Riassegna le date alla sessione aggiornata
-        const reAssigned = updatedSessions.map(s => 
-          s.id === state.activeSessionId ? assignDatesToSession(s, updatedSessions.filter(x => x.id !== s.id)) : s
-        );
-        setState(prev => ({ ...prev, sessions: reAssigned, isLoading: false }));
+        
+        setState(prev => ({ ...prev, sessions: rebalanceAllSessions(updatedSessions), isLoading: false }));
         setIsUpdatingSession(false);
       } else {
-        setLoadingStep('Ottimizzazione Carico Cognitivo...');
-        const data = await service.analyzeMaterials(config.content, config.faculty, config.course, config.examType, config.depth, config.examDate);
+        setLoadingStep('Analisi Materiali IA...');
+        newData = await service.analyzeMaterials(config.content, config.faculty, config.course, config.examType, config.depth, config.examDate);
+        
         const newSess: ExamSession = {
           id: crypto.randomUUID(), faculty: config.faculty, course: config.course, examType: config.examType,
           depth: config.depth, examDate: config.examDate, isPostponed: false, isPassed: false,
-          content: config.content, pastExamsContent: '', data: data, createdAt: Date.now(),
+          content: config.content, pastExamsContent: '', data: newData, createdAt: Date.now(),
           colorIndex: state.sessions.length % 6, dayOffs: []
         };
-        // Ribilancia solo per la nuova materia
-        const newSessionWithDates = assignDatesToSession(newSess, state.sessions);
+        
         setState(prev => ({
-          ...prev, sessions: [...prev.sessions, newSessionWithDates],
+          ...prev, sessions: rebalanceAllSessions([...prev.sessions, newSess]),
           activeSessionId: newSess.id, isLoading: false, isAddingNew: false
         }));
       }
-      setLoadingStep('');
       setActiveTab('summary');
     } catch (err: any) {
-      const msg = err.message || "";
-      setState(prev => ({ 
-        ...prev, 
-        isLoading: false, 
-        error: msg === "QUOTA_EXCEEDED" ? "Limite IA raggiunto. Attendi un istante." : "Errore nell'analisi. Riprova con meno testo."
-      }));
-      setLoadingStep('');
+      setState(prev => ({ ...prev, isLoading: false, error: "Errore. Riprova con meno testo." }));
     }
+    setLoadingStep('');
   };
 
   const activeSess = state.sessions.find(s => s.id === state.activeSessionId);
 
-  if (!state.user && !state.isLoading) {
-    return <AuthView onAuthSuccess={handleAuthSuccess} />;
-  }
+  if (!state.user && !state.isLoading) return <AuthView onAuthSuccess={handleAuthSuccess} />;
 
   return (
     <div className="min-h-screen flex bg-slate-50/20 font-inter text-slate-900">
@@ -365,8 +255,8 @@ const App: React.FC = () => {
                   <div className="absolute inset-0 border-[6px] border-blue-600 rounded-full border-t-transparent animate-spin"></div>
                   <ICONS.Brain className="absolute inset-0 m-auto w-10 h-10 text-blue-600" />
                 </div>
-                <h3 className="text-2xl font-black uppercase text-slate-900 italic tracking-tighter mb-2">{loadingStep || 'Sincronizzazione...'}</h3>
-                <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em]">Crittografia end-to-end attiva</p>
+                <h3 className="text-2xl font-black uppercase text-slate-900 italic tracking-tighter mb-2">{loadingStep || 'Caricamento Cloud...'}</h3>
+                <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em]">Tutti i tuoi dati sono al sicuro</p>
               </div>
             </div>
         ) : state.isAddingNew || isUpdatingSession ? (
@@ -389,7 +279,7 @@ const App: React.FC = () => {
                 <button onClick={() => setIsSidebarOpen(true)} className="lg:hidden p-3 bg-white rounded-2xl shadow-sm text-blue-600"><ICONS.Menu className="w-6 h-6" /></button>
                 <div className="truncate">
                   <h1 className="text-lg font-black text-slate-900 truncate tracking-tight">
-                    {isGlobalPlan ? 'Pianificazione Cloud' : (activeSess?.course || 'Area Studio')}
+                    {isGlobalPlan ? 'Il Mio Calendario' : (activeSess?.course || 'Area Studio')}
                   </h1>
                 </div>
               </div>
@@ -399,17 +289,31 @@ const App: React.FC = () => {
                 {isGlobalPlan ? (
                   <PlanView 
                     sessions={state.sessions} 
-                    onUpdateSessions={(u) => {
-                      const rebalanced = rebalanceAllSessions(u);
-                      setState(p => ({ ...p, sessions: rebalanced }));
-                      StorageService.saveSessions(rebalanced);
-                      if (state.user) {
-                        StorageService.pushToCloud(state.user.email, rebalanced);
-                      }
+                    onUpdateSessions={(u) => setState(p => ({ ...p, sessions: rebalanceAllSessions(u) }))} 
+                    onMoveModule={(sid, muid, nd) => {
+                      const updated = state.sessions.map(s => {
+                        if (s.id !== sid) return s;
+                        const plan = s.data.studyPlan.map(m => m.uid === muid ? { ...m, assignedDate: nd, isManuallyPlaced: true } : m);
+                        return { ...s, data: { ...s.data, studyPlan: plan } };
+                      });
+                      setState(prev => ({ ...prev, sessions: rebalanceAllSessions(updated) }));
                     }} 
-                    onMoveModule={handleMoveModule} 
-                    onRebalance={handleManualRebalance}
-                    onToggleTask={handleToggleTask}
+                    onRebalance={() => setState(p => ({...p, sessions: rebalanceAllSessions(p.sessions)}))}
+                    onToggleTask={(sid, muid, tidx) => {
+                      setState(prev => {
+                        const updated = prev.sessions.map(s => {
+                          if (s.id !== sid) return s;
+                          const plan = s.data.studyPlan.map(m => {
+                            if (m.uid !== muid) return m;
+                            const newCompleted = [...(m.completedTasks || [])];
+                            newCompleted[tidx] = !newCompleted[tidx];
+                            return { ...m, completedTasks: newCompleted };
+                          });
+                          return { ...s, data: { ...s.data, studyPlan: plan } };
+                        });
+                        return { ...prev, sessions: updated };
+                      });
+                    }}
                   />
                 ) : activeSess ? (
                   <div className="space-y-8">
@@ -445,10 +349,10 @@ const App: React.FC = () => {
                        <ICONS.Book className="w-16 h-16" />
                      </div>
                      <div className="space-y-2">
-                       <h2 className="text-3xl font-black text-slate-900 tracking-tight">Pronto a iniziare? 🚀</h2>
-                       <p className="text-slate-400 font-medium">I tuoi dati verranno sincronizzati su tutti i tuoi dispositivi.</p>
+                       <h2 className="text-3xl font-black text-slate-900 tracking-tight">Pronto per il Successo? 🚀</h2>
+                       <p className="text-slate-400 font-medium">I tuoi amici hanno i loro account, tu hai il tuo. La tua strada è unica.</p>
                      </div>
-                     <button onClick={() => setState(p => ({...p, isAddingNew: true}))} className="px-12 py-5 bg-blue-600 text-white rounded-[2rem] font-black uppercase tracking-widest shadow-2xl shadow-blue-500/30 hover:bg-blue-700 transition-all hover:scale-105 active:scale-95">Inizia Percorso</button>
+                     <button onClick={() => setState(p => ({...p, isAddingNew: true}))} className="px-12 py-5 bg-blue-600 text-white rounded-[2rem] font-black uppercase tracking-widest shadow-2xl shadow-blue-500/30 hover:bg-blue-700 transition-all hover:scale-105 active:scale-95">Pianifica Ora</button>
                   </div>
                 )}
               </div>
