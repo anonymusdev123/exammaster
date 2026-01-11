@@ -62,15 +62,33 @@ const SetupForm: React.FC<SetupFormProps> = ({ onAnalyze, loading, error, initia
     e.preventDefault();
     if (!course || !faculty || !examDate) return;
     
-    const combinedContent = `
-      [NOTE AGGIUNTIVE STUDENTE]:
-      ${manualNotes}
-      
-      [NUOVI DOCUMENTI ALLEGATI]:
-      ${uploadedFiles.map(f => `--- INIZIO FILE: ${f.name} ---\n${f.content}\n--- FINE FILE ---`).join('\n\n')}
-    `;
+    // Costruiamo un blocco di testo molto chiaro per l'IA
+    let combinedContent = "";
     
-    onAnalyze({ faculty, course, examType, depth, examDate, content: combinedContent });
+    if (manualNotes.trim()) {
+      combinedContent += `[APPUNTI MANUALI DELLO STUDENTE]\n${manualNotes}\n\n`;
+    }
+    
+    if (uploadedFiles.length > 0) {
+      combinedContent += `[CONTENUTO DOCUMENTI CARICATI]\n`;
+      uploadedFiles.forEach(f => {
+        combinedContent += `--- FILE: ${f.name} ---\n${f.content}\n\n`;
+      });
+    }
+    
+    // Se non c'è nulla, inviamo almeno una stringa minima per non mandare in crash il servizio
+    if (!combinedContent.trim()) {
+      combinedContent = "Nessun materiale fornito. Genera basandoti sul curriculum standard della materia.";
+    }
+    
+    onAnalyze({ 
+      faculty, 
+      course, 
+      examType, 
+      depth, 
+      examDate, 
+      content: combinedContent 
+    });
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -83,6 +101,7 @@ const SetupForm: React.FC<SetupFormProps> = ({ onAnalyze, loading, error, initia
         const ext = file.name.split('.').pop()?.toLowerCase() || '';
         const sizeStr = (file.size / 1024 / 1024).toFixed(2) + " MB";
         let text = "";
+        
         if (ext === 'pdf') {
           const ab = await file.arrayBuffer();
           const pdf = await pdfjsLib.getDocument({ data: ab }).promise;
@@ -102,8 +121,13 @@ const SetupForm: React.FC<SetupFormProps> = ({ onAnalyze, loading, error, initia
             r.readAsText(file);
           });
         }
-        setUploadedFiles(prev => [...prev, { name: file.name, content: text, size: sizeStr }]);
-      } catch (err) { console.error(err); }
+        
+        if (text.trim()) {
+          setUploadedFiles(prev => [...prev, { name: file.name, content: text, size: sizeStr }]);
+        }
+      } catch (err) { 
+        console.error("Errore estrazione file:", err); 
+      }
     }
     setIsExtracting(false);
   };
@@ -129,12 +153,10 @@ const SetupForm: React.FC<SetupFormProps> = ({ onAnalyze, loading, error, initia
           <ICONS.Brain className="w-8 h-8 md:w-10 md:h-10 text-white" />
         </div>
         <h2 className="text-2xl md:text-4xl font-black text-slate-900 mb-2 tracking-tight">
-          {initialData ? 'Modifica Esame' : 'Nuovo Esame'}
+          {initialData ? 'Aggiorna Materia' : 'Nuovo Piano di Studio'}
         </h2>
         <p className="text-slate-500 text-xs md:text-sm font-medium">
-          {initialData 
-            ? 'Modifica i dettagli dell\'appello o aggiungi nuovo materiale.' 
-            : "L'IA organizzerà lo studio massimizzando ogni giorno disponibile."}
+          Carica dispense, slide o appunti: l'IA creerà tutto il necessario per l'esame.
         </p>
       </div>
 
@@ -151,9 +173,8 @@ const SetupForm: React.FC<SetupFormProps> = ({ onAnalyze, loading, error, initia
               type="text" 
               value={faculty} 
               onChange={(e) => setFaculty(e.target.value)}
-              readOnly={!!initialData}
-              placeholder="es. Medicina, Ingegneria..."
-              className={`w-full px-5 py-4 border-2 border-slate-100 rounded-2xl font-bold text-base outline-none focus:border-blue-500 transition-all text-slate-900 shadow-sm ${initialData ? 'bg-slate-50 text-slate-400' : 'bg-white'}`} 
+              placeholder="es. Medicina, Economia..."
+              className="w-full px-5 py-4 border-2 border-slate-100 rounded-2xl font-bold text-base outline-none focus:border-blue-500 transition-all text-slate-900 bg-white shadow-sm" 
               required
             />
           </div>
@@ -163,9 +184,8 @@ const SetupForm: React.FC<SetupFormProps> = ({ onAnalyze, loading, error, initia
               type="text" 
               value={course} 
               onChange={(e) => setCourse(e.target.value)}
-              readOnly={!!initialData}
-              placeholder="es. Anatomia, Analisi 1..."
-              className={`w-full px-5 py-4 border-2 border-slate-100 rounded-2xl font-bold text-base outline-none focus:border-blue-500 transition-all text-slate-900 shadow-sm ${initialData ? 'bg-slate-50 text-slate-400' : 'bg-white'}`} 
+              placeholder="es. Anatomia, Microeconomia..."
+              className="w-full px-5 py-4 border-2 border-slate-100 rounded-2xl font-bold text-base outline-none focus:border-blue-500 transition-all text-slate-900 bg-white shadow-sm" 
               required
             />
           </div>
@@ -211,7 +231,7 @@ const SetupForm: React.FC<SetupFormProps> = ({ onAnalyze, loading, error, initia
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-2">
-              {initialData ? 'Integra nuovi materiali' : "Materiali d'esame"}
+              Materiali d'esame (PDF, DOCX, TXT)
             </label>
             <div className="flex gap-2">
               <input type="file" id="setup-upload" className="hidden" multiple onChange={handleFileUpload} />
@@ -241,12 +261,15 @@ const SetupForm: React.FC<SetupFormProps> = ({ onAnalyze, loading, error, initia
             </div>
           )}
 
-          <textarea 
-            value={manualNotes} 
-            onChange={(e) => setManualNotes(e.target.value)} 
-            className="w-full px-8 py-8 border-2 border-slate-100 rounded-[2rem] h-48 outline-none focus:border-blue-500 font-medium text-base resize-none shadow-sm text-slate-900 bg-white" 
-            placeholder={initialData ? "Aggiungi nuovi appunti..." : "Incolla qui i tuoi appunti o specifica le istruzioni per l'IA..."} 
-          />
+          <div className="space-y-2">
+            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-2">Appunti o Testo Libero</label>
+            <textarea 
+              value={manualNotes} 
+              onChange={(e) => setManualNotes(e.target.value)} 
+              className="w-full px-8 py-8 border-2 border-slate-100 rounded-[2rem] h-48 outline-none focus:border-blue-500 font-medium text-base resize-none shadow-sm text-slate-900 bg-white" 
+              placeholder="Incolla qui appunti presi a lezione, sommari o istruzioni specifiche per l'IA..." 
+            />
+          </div>
         </div>
 
         <button 
@@ -254,7 +277,7 @@ const SetupForm: React.FC<SetupFormProps> = ({ onAnalyze, loading, error, initia
           disabled={loading || isExtracting || !course || !examDate} 
           className="w-full py-6 bg-blue-600 text-white rounded-[2.5rem] font-black text-xl hover:bg-blue-700 transition-all shadow-2xl disabled:opacity-50 active:scale-95"
         >
-          {loading ? 'Riorganizzazione IA...' : initialData ? 'Salva e Aggiorna Piano' : 'Crea Piano di Studio'}
+          {loading ? 'Generazione in corso...' : initialData ? 'Salva e Aggiorna Piano' : 'Crea Piano di Studio'}
         </button>
       </form>
     </div>

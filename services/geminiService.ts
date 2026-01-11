@@ -19,7 +19,7 @@ export class GeminiService {
       const ai = this.getAI();
       return await fn(ai);
     } catch (error: any) {
-      console.error("Gemini API Error Detail:", error);
+      console.error("DEBUG - Gemini API Error:", error);
       const msg = error.message || "";
       if (msg.includes('429') || msg.includes('quota')) {
         if (retries > 0) {
@@ -33,22 +33,23 @@ export class GeminiService {
   }
 
   private getFallbackData(course: string, faculty: string, depth: DepthLevel): StudyMaterialData {
+    console.warn("DEBUG - Using Fallback Data for:", course);
     const template = getTemplate(course) || {
       modules: [
-        { day: 1, topics: ["Introduzione e Basi"], tasks: ["[TEORIA] Studio concetti fondamentali - 2h", "[PRATICA] Esercizi di base - 1h"], priority: Importance.HIGH },
-        { day: 2, topics: ["Approfondimento"], tasks: ["[TEORIA] Analisi dettagliata capitoli - 2h", "[PRATICA] Applicazione concetti - 1h"], priority: Importance.MEDIUM }
+        { day: 1, topics: ["Introduzione"], tasks: ["[TEORIA] Studio concetti base - 2h"], priority: Importance.HIGH },
+        { day: 2, topics: ["Approfondimento"], tasks: ["[TEORIA] Analisi capitoli principali - 2h"], priority: Importance.MEDIUM }
       ]
     };
 
     return {
-      summary: [{ title: "Focus Strategico", content: `Analisi di ${course}`, details: "Dati generati dal sistema di emergenza.", importance: Importance.HIGH }],
-      questions: [{ question: `Quali sono i pilastri di ${course}?`, type: 'OPEN', modelAnswer: "Vedi materiali del corso.", gradingCriteria: ["Completezza"] }],
-      flashcards: [{ question: "Concetto chiave 1", answer: "Definizione standard dal manuale.", difficulty: 1 }],
+      summary: [{ title: "Panoramica Materia", content: `Studio di ${course}`, details: "Dati generati dal sistema di backup.", importance: Importance.HIGH }],
+      questions: [{ question: `Quali sono i temi principali di ${course}?`, type: 'OPEN', modelAnswer: "Consultare i testi consigliati.", gradingCriteria: ["Completezza"] }],
+      flashcards: [{ question: "Concetto fondamentale", answer: "Definizione tratta dai materiali.", difficulty: 1 }],
       multipleChoice: [{
-        question: `Qual è l'argomento centrale di ${course}?`,
-        options: ["Argomento A", "Argomento B", "Argomento C", "Argomento D"],
+        question: `Qual è il pilastro della materia ${course}?`,
+        options: ["Opzione A", "Opzione B", "Opzione C", "Opzione D"],
         correctAnswerIndex: 0,
-        explanation: "L'argomento A è fondamentale per comprendere le basi della materia."
+        explanation: "L'opzione A è corretta secondo la teoria standard."
       }],
       studyPlan: template.modules.map((m: any) => ({
         ...m,
@@ -73,23 +74,38 @@ export class GeminiService {
   ): Promise<StudyMaterialData> {
     const modelName = "gemini-3-flash-preview";
     
-    try {
-      const maxChars = 10000;
-      const truncatedText = text.length > maxChars ? text.substring(0, maxChars) : text;
-      
-      const prompt = `
-        RUOLO: Tutor Universitario esperto in "${course}".
-        MATERIALI: ${truncatedText || "Usa conoscenze generali universitarie."}
-        DATA ESAME: ${examDate}
-        
-        GENERA un oggetto JSON con:
-        1. summary (ARRAY di oggetti con title, content, details, importance: HIGH/MEDIUM/LOW)
-        2. questions (ARRAY di oggetti con question, type, modelAnswer)
-        3. flashcards (ARRAY di oggetti con question, answer, difficulty)
-        4. multipleChoice (ARRAY di 5 oggetti con question, options (array di 4 stringhe), correctAnswerIndex (numero 0-3), explanation, topic)
-        5. studyPlan (ARRAY di oggetti con day, topics, tasks, priority)
-      `;
+    // Pulizia e preparazione testo
+    const cleanText = text.trim();
+    const truncatedText = cleanText.length > 15000 ? cleanText.substring(0, 15000) : cleanText;
+    
+    console.log("DEBUG - Inizio analisi materiali per:", course);
+    console.log("DEBUG - Lunghezza testo inviato:", truncatedText.length);
 
+    const prompt = `
+      RUOLO: Sei il miglior Tutor Universitario al mondo per la facoltà di ${faculty}.
+      MATERIA: ${course}
+      OBIETTIVO: Analizzare i materiali forniti e creare un piano di studio e strumenti di apprendimento.
+      
+      ISTRUZIONI RIGIDE:
+      1. Leggi attentamente i MATERIALI qui sotto.
+      2. Se i MATERIALI contengono informazioni, estrai i concetti chiave da lì.
+      3. Se i MATERIALI sono poveri o assenti, usa le tue conoscenze accademiche per ${course}.
+      4. Produci ESATTAMENTE lo schema JSON richiesto.
+      
+      MATERIALI DA ANALIZZARE:
+      """
+      ${truncatedText}
+      """
+
+      REQUISITI OUTPUT:
+      - 'summary': Minimo 3 unità con titoli accattivanti.
+      - 'questions': 5 domande tipiche d'esame (aperte o brevi).
+      - 'flashcards': 10 flashcards (fronte/retro).
+      - 'multipleChoice': 5 quiz a scelta multipla con spiegazione.
+      - 'studyPlan': Un percorso a tappe (giorni) basato sulla complessità.
+    `;
+
+    try {
       const response = await this.callWithRetry(async (ai) => {
         return await ai.models.generateContent({
           model: modelName,
@@ -99,9 +115,43 @@ export class GeminiService {
             responseSchema: {
               type: Type.OBJECT,
               properties: {
-                summary: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { title: { type: Type.STRING }, content: { type: Type.STRING }, details: { type: Type.STRING }, importance: { type: Type.STRING } } } },
-                questions: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { question: { type: Type.STRING }, type: { type: Type.STRING }, modelAnswer: { type: Type.STRING } } } },
-                flashcards: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { question: { type: Type.STRING }, answer: { type: Type.STRING }, difficulty: { type: Type.NUMBER } } } },
+                summary: { 
+                  type: Type.ARRAY, 
+                  items: { 
+                    type: Type.OBJECT, 
+                    properties: { 
+                      title: { type: Type.STRING }, 
+                      content: { type: Type.STRING }, 
+                      details: { type: Type.STRING }, 
+                      importance: { type: Type.STRING } 
+                    },
+                    required: ["title", "content", "details", "importance"]
+                  } 
+                },
+                questions: { 
+                  type: Type.ARRAY, 
+                  items: { 
+                    type: Type.OBJECT, 
+                    properties: { 
+                      question: { type: Type.STRING }, 
+                      type: { type: Type.STRING }, 
+                      modelAnswer: { type: Type.STRING } 
+                    },
+                    required: ["question", "type", "modelAnswer"]
+                  } 
+                },
+                flashcards: { 
+                  type: Type.ARRAY, 
+                  items: { 
+                    type: Type.OBJECT, 
+                    properties: { 
+                      question: { type: Type.STRING }, 
+                      answer: { type: Type.STRING }, 
+                      difficulty: { type: Type.NUMBER } 
+                    },
+                    required: ["question", "answer", "difficulty"]
+                  } 
+                },
                 multipleChoice: { 
                   type: Type.ARRAY, 
                   items: { 
@@ -110,13 +160,25 @@ export class GeminiService {
                       question: { type: Type.STRING }, 
                       options: { type: Type.ARRAY, items: { type: Type.STRING } }, 
                       correctAnswerIndex: { type: Type.INTEGER }, 
-                      explanation: { type: Type.STRING }, 
-                      topic: { type: Type.STRING } 
+                      explanation: { type: Type.STRING },
+                      topic: { type: Type.STRING }
                     },
                     required: ["question", "options", "correctAnswerIndex", "explanation"]
                   } 
                 },
-                studyPlan: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { day: { type: Type.NUMBER }, topics: { type: Type.ARRAY, items: { type: Type.STRING } }, tasks: { type: Type.ARRAY, items: { type: Type.STRING } }, priority: { type: Type.STRING } } } }
+                studyPlan: { 
+                  type: Type.ARRAY, 
+                  items: { 
+                    type: Type.OBJECT, 
+                    properties: { 
+                      day: { type: Type.INTEGER }, 
+                      topics: { type: Type.ARRAY, items: { type: Type.STRING } }, 
+                      tasks: { type: Type.ARRAY, items: { type: Type.STRING } }, 
+                      priority: { type: Type.STRING } 
+                    },
+                    required: ["day", "topics", "tasks", "priority"]
+                  } 
+                }
               },
               required: ["summary", "questions", "flashcards", "multipleChoice", "studyPlan"]
             },
@@ -125,26 +187,36 @@ export class GeminiService {
         });
       });
 
-      const parsed = JSON.parse(response.text || '{}');
-      parsed.studyPlan = parsed.studyPlan.map((m: any) => ({
-        ...m, uid: this.generateUid(), completedTasks: m.tasks.map(() => false)
+      const jsonStr = response.text;
+      if (!jsonStr) throw new Error("EMPTY_RESPONSE");
+      
+      console.log("DEBUG - Risposta IA ricevuta con successo.");
+      const parsed = JSON.parse(jsonStr);
+      
+      // Post-elaborazione
+      parsed.studyPlan = (parsed.studyPlan || []).map((m: any) => ({
+        ...m, 
+        uid: this.generateUid(), 
+        completedTasks: (m.tasks || []).map(() => false)
       }));
+
       return { ...parsed, faculty, course, depth };
 
     } catch (e) {
-      console.warn("IA Fallita. Uso template di emergenza.");
+      console.error("DEBUG - Errore durante analyzeMaterials:", e);
       return this.getFallbackData(course, faculty, depth);
     }
   }
 
   async generateAdditionalMCQs(content: string, course: string, topic?: string): Promise<MultipleChoiceQuestion[]> {
     try {
+      console.log("DEBUG - Generazione quiz extra per:", topic || "Generale");
       const response = await this.callWithRetry(async (ai) => {
         return await ai.models.generateContent({
           model: "gemini-3-flash-preview",
-          contents: `Genera 5 quiz a risposta multipla impegnativi per la materia "${course}". 
-          ${topic ? `ARGOMENTO SPECIFICO: "${topic}"` : "Argomenti generali basati sul contesto."}
-          CONTESTO: ${content.substring(0, 8000)}`,
+          contents: `Genera 5 nuovi quiz a risposta multipla su "${course}". 
+          ${topic ? `FOCUS SULL'ARGOMENTO: "${topic}"` : ""}
+          Usa questo materiale come base: ${content.substring(0, 8000)}`,
           config: {
             responseMimeType: "application/json",
             responseSchema: {
@@ -169,8 +241,8 @@ export class GeminiService {
       const result = JSON.parse(response.text || '[]');
       return Array.isArray(result) ? result : [];
     } catch (e) {
-      console.error("MCQ Generation Error:", e);
-      throw e; // Rilanciamo l'errore per gestirlo nella UI
+      console.error("DEBUG - MCQ Generation Error:", e);
+      return [];
     }
   }
 
@@ -179,7 +251,10 @@ export class GeminiService {
     return ai.chats.create({
       model: "gemini-3-flash-preview",
       config: {
-        systemInstruction: `Sei il Professore di ${materialData.course}. Il tuo obiettivo è esaminare lo studente. Fai una domanda alla volta. Sii rigoroso ma costruttivo.`,
+        systemInstruction: `Sei il Professore di ${materialData.course}. 
+        Il tuo compito è interrogare lo studente in modo rigoroso. 
+        BASATI SUI MATERIALI FORNITI: ${fullContent.substring(0, 5000)}.
+        Fai una domanda alla volta e valuta la risposta.`,
       },
     });
   }
@@ -189,7 +264,7 @@ export class GeminiService {
       const response = await this.callWithRetry(async (ai) => {
         return await ai.models.generateContent({
           model: "gemini-3-flash-preview",
-          contents: `Spiega il concetto "${concept}" basandoti su questo contesto: ${context.substring(0, 6000)}`,
+          contents: `Spiega il concetto "${concept}" in modo semplice ma accademico, usando questo contesto: ${context.substring(0, 6000)}`,
         });
       });
       return response.text || "Spiegazione non disponibile.";
@@ -203,7 +278,7 @@ export class GeminiService {
       const response = await this.callWithRetry(async (ai) => {
         return await ai.models.generateContent({
           model: "gemini-3-flash-preview",
-          contents: `Genera una simulazione d'esame per ${course} basandoti sulle tracce passate: ${pastExams.substring(0, 5000)}`,
+          contents: `Crea una simulazione d'esame per ${course}. Usa le tracce passate per lo stile: ${pastExams.substring(0, 5000)}`,
           config: {
             responseMimeType: "application/json",
             responseSchema: {
