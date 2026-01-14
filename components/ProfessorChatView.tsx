@@ -24,26 +24,26 @@ const ProfessorChatView: React.FC<ProfessorChatViewProps> = ({ session, onUpdate
 
   useEffect(() => {
     const initChat = async () => {
-      const ai = new GeminiService();
-      // Passiamo il contesto della sessione per inizializzare il modello
-      const chatInstance = await ai.startOralSimulation(session.data, session.content);
-      setChat(chatInstance);
-      
-      // Messaggio di benvenuto se la chat è vuota
-      if (!session.chatHistory || session.chatHistory.length === 0) {
-        const initialMsg: ChatMessage = { 
-          role: 'model', 
-          text: `Buongiorno! Sono il Professore di ${session.course}. Sono qui per aiutarti a chiarire ogni dubbio o per fare una simulazione rapida. Carica pure i tuoi materiali o fammi una domanda!`,
-          timestamp: Date.now()
-        };
-        setMessages([initialMsg]);
-        onUpdateChat([initialMsg]);
-      } else {
-        setMessages(session.chatHistory);
+      try {
+        const ai = new GeminiService();
+        const chatInstance = await ai.startOralSimulation(session.data, session.content);
+        setChat(chatInstance);
+        
+        if (!session.chatHistory || session.chatHistory.length === 0) {
+          const initialMsg: ChatMessage = { 
+            role: 'model', 
+            text: `Buongiorno! Sono il Professore di ${session.course}. Sono qui per aiutarti a chiarire ogni dubbio. Come procede lo studio?`,
+            timestamp: Date.now()
+          };
+          setMessages([initialMsg]);
+          onUpdateChat([initialMsg]);
+        }
+      } catch (err) {
+        console.error("Init Chat Error:", err);
       }
     };
     initChat();
-  }, [session.id]); // Re-inizializza se cambia sessione
+  }, [session.id]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -80,7 +80,7 @@ const ProfessorChatView: React.FC<ProfessorChatViewProps> = ({ session, onUpdate
           });
         }
         setAttachments(prev => [...prev, { name: file.name, content: text }]);
-      } catch (err) { console.error("Errore caricamento file in chat:", err); }
+      } catch (err) { console.error("Errore file chat:", err); }
     }
     setIsExtracting(false);
   };
@@ -93,13 +93,13 @@ const ProfessorChatView: React.FC<ProfessorChatViewProps> = ({ session, onUpdate
     
     let fullPrompt = userText;
     if (currentAttachments.length > 0) {
-      fullPrompt = `[DUBBIO STUDENTE]: ${userText || "Analizza questi nuovi materiali."}\n\n[NUOVI DOCUMENTI ALLEGATI]:\n` + 
-        currentAttachments.map(a => `FILE: ${a.name}\nCONTENUTO: ${a.content}`).join("\n\n");
+      fullPrompt = `[DOMANDA]: ${userText || "Analizza questi documenti."}\n\n[ALLEGATI]:\n` + 
+        currentAttachments.map(a => `FILE: ${a.name}\nCONTENT: ${a.content.substring(0, 3000)}`).join("\n\n");
     }
 
     const userMsg: ChatMessage = { 
       role: 'user', 
-      text: userText || `Allegato: ${currentAttachments.map(a => a.name).join(", ")}`, 
+      text: userText || `Allegati: ${currentAttachments.map(a => a.name).join(", ")}`, 
       timestamp: Date.now(),
       attachments: currentAttachments.map(a => a.name)
     };
@@ -114,16 +114,17 @@ const ProfessorChatView: React.FC<ProfessorChatViewProps> = ({ session, onUpdate
       const response = await chat.sendMessage({ message: fullPrompt });
       const modelMsg: ChatMessage = { 
         role: 'model', 
-        text: response.text || 'Mi scuso, non sono riuscito a generare una risposta valida.', 
+        text: response.text || 'Non riesco a rispondere ora.', 
         timestamp: Date.now() 
       };
       const finalHistory = [...newHistory, modelMsg];
       setMessages(finalHistory);
       onUpdateChat(finalHistory);
-    } catch (err) {
+    } catch (err: any) {
+      const isQuota = err.message === "QUOTA_EXCEEDED";
       const errorMsg: ChatMessage = { 
         role: 'model', 
-        text: 'Mi scuso, il sistema è sovraccarico. Riprova tra un istante.', 
+        text: isQuota ? '⚠️ Limite di messaggi IA raggiunto. Attendi 60 secondi prima di riprovare.' : 'Spiacente, il server è sovraccarico. Riprova tra un istante.', 
         timestamp: Date.now() 
       };
       setMessages([...newHistory, errorMsg]);
@@ -141,12 +142,12 @@ const ProfessorChatView: React.FC<ProfessorChatViewProps> = ({ session, onUpdate
           </div>
           <div>
             <h2 className="text-xl font-black tracking-tight">Chiedi al Prof</h2>
-            <p className="text-[9px] font-black uppercase tracking-widest opacity-70">Knowledge Assistant • {session.course}</p>
+            <p className="text-[9px] font-black uppercase tracking-widest opacity-70">Focus: {session.course}</p>
           </div>
         </div>
         <div className="hidden md:flex items-center gap-2 px-4 py-2 bg-white/10 rounded-xl border border-white/10 text-[9px] font-black uppercase tracking-widest">
           <span className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></span>
-          Chat Persistente
+          Docente Disponibile
         </div>
       </header>
 
@@ -183,33 +184,19 @@ const ProfessorChatView: React.FC<ProfessorChatViewProps> = ({ session, onUpdate
                 <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce [animation-delay:0.2s]"></span>
                 <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce [animation-delay:0.4s]"></span>
               </span>
-              <span className="text-[10px] text-blue-400 font-black uppercase tracking-widest italic">Il Prof risponde...</span>
+              <span className="text-[10px] text-blue-400 font-black uppercase tracking-widest italic">Analisi in corso...</span>
             </div>
           </div>
         )}
       </div>
 
       <div className="p-6 bg-white border-t border-slate-100">
-        {attachments.length > 0 && (
-          <div className="mb-4 flex flex-wrap gap-2 animate-slideUp">
-             {attachments.map((a, i) => (
-               <div key={i} className="flex items-center gap-2 bg-blue-50 px-3 py-1.5 rounded-xl border border-blue-200">
-                 <ICONS.Clipboard className="w-3.5 h-3.5 text-blue-500" />
-                 <span className="text-[10px] font-bold text-slate-700 truncate max-w-[120px]">{a.name}</span>
-                 <button onClick={() => setAttachments(prev => prev.filter((_, idx) => idx !== i))} className="text-slate-300 hover:text-red-500"><ICONS.XMark className="w-3.5 h-3.5" /></button>
-               </div>
-             ))}
-             {isExtracting && <div className="text-[9px] font-black text-blue-400 uppercase tracking-widest animate-pulse flex items-center px-2">Lettura file...</div>}
-          </div>
-        )}
-
         <div className="flex gap-3 p-2 bg-slate-50 rounded-[2rem] border border-slate-200 focus-within:border-blue-300 focus-within:ring-4 focus-within:ring-blue-100 transition-all">
           <input type="file" ref={fileInputRef} className="hidden" multiple onChange={handleFileUpload} />
           <button 
             type="button"
             onClick={() => fileInputRef.current?.click()}
             className="w-12 h-12 bg-white text-blue-600 rounded-2xl flex items-center justify-center hover:bg-blue-50 transition-all border border-slate-200 shadow-sm shrink-0"
-            title="Allega dispense o esercizi"
           >
             <ICONS.Plus className="w-5 h-5" />
           </button>
@@ -219,7 +206,7 @@ const ProfessorChatView: React.FC<ProfessorChatViewProps> = ({ session, onUpdate
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-            placeholder="Chiedi spiegazioni o simula un'interrogazione..."
+            placeholder="Fai una domanda sui tuoi appunti..."
             className="flex-1 px-4 py-2 bg-transparent text-slate-900 outline-none text-sm font-bold placeholder-slate-400"
           />
           
